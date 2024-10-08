@@ -21,40 +21,41 @@ class ExpenseModel extends Model {
   }
 
   // Método para inicializar valores desde Firestore
-  void setInitValues() async {
-    try {
-      await createAppDataIfNotExists();  // Crear el documento si no existe
+Future<void> setInitValues() async {
+  try {
+    await createAppDataIfNotExists();  // Crear el documento si no existe
 
-      DocumentSnapshot snapshot = await _appDataCollection.doc('app_data').get();
-      if (snapshot.exists) {
-        _users = List<String>.from(snapshot['users'] ?? []);
-        _categories = List<Map<String, dynamic>>.from(snapshot['categories'] ?? []);
-        _currentMonth = snapshot['currentMonth'] ?? '1';
-      } else {
-        _users = [];
-        _categories = [];
-        _currentMonth = '1';
-      }
-
-      QuerySnapshot expensesSnapshot = await _expensesCollection.get();
-      if (expensesSnapshot.docs.isNotEmpty) {
-        _expenses = expensesSnapshot.docs
-            .map((e) => Map<String, dynamic>.from(e.data() as Map<String, dynamic>))
-            .toList();
-      } else {
-        _expenses = [];
-      }
-
-      // Verificar datos cargados
-      //print("Personas cargados: $_users");
-      //print("Categorías cargadas: $_categories");
-      //print("Gastos cargados: $_expenses");
-
-      notifyListeners();
-    } catch (e) {
-      print("Error al inicializar valores: $e");
+    DocumentSnapshot snapshot = await _appDataCollection.doc('app_data').get();
+    if (snapshot.exists) {
+      _users = List<String>.from(snapshot['users'] ?? []);
+      _categories = List<Map<String, dynamic>>.from(snapshot['categories'] ?? []);
+      _currentMonth = snapshot['currentMonth'] ?? '1';
+    } else {
+      _users = [];
+      _categories = [];
+      _currentMonth = '1';
     }
+
+    QuerySnapshot expensesSnapshot = await _expensesCollection.get();
+    if (expensesSnapshot.docs.isNotEmpty) {
+      _expenses = expensesSnapshot.docs
+          .map((e) => Map<String, dynamic>.from(e.data() as Map<String, dynamic>))
+          .toList();
+    } else {
+      _expenses = [];
+    }
+    /*
+    print("Usuarios cargados: $_users");
+    print("Categorías cargadas: $_categories");
+    print("Gastos cargados: $_expenses");
+    */
+
+    notifyListeners();
+  } catch (e) {
+    print("Error al inicializar valores: $e");
   }
+}
+
 
   // Método para agregar un nuevo gasto
   void addExpense(Map<String, dynamic> newExpenseEntry) async {

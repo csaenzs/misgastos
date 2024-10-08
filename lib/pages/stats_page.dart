@@ -23,22 +23,41 @@ class StatsPage extends StatefulWidget {
 class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMixin {
   late Map<String, double> categoryTotals;
   late Map<String, double> userTotals;
-  late Map<String, double> pieData;
+  late Map<String, double> pieData = {}; // Inicialización con un mapa vacío.
   late List<String> users;
   final ScreenshotController _screenShotController = ScreenshotController();
   late TabController _controller;
 
+  bool isLoading = true;  // Nueva variable para indicar si los datos están cargando
+
   @override
   void initState() {
     super.initState();
-    _controller = TabController(vsync: this, length: 13, initialIndex: int.parse(widget.model.getCurrentMonth) - 1);
-    _loadData();
+    _controller = TabController(vsync: this, length: 13, initialIndex: DateTime.now().month - 1);
+     pieData = {}; // Asigna un valor predeterminado inicial.
+    _loadData(); // Llamar al método que carga los datos
   }
 
-  void _loadData() {
+  
+
+  void _loadData() async {
+    // Mostrar el indicador de carga antes de iniciar el proceso.
+    setState(() {
+      isLoading = true;
+    });
+
+    // Cargar los valores iniciales del modelo.
+    await widget.model.setInitValues();
+
+    // Calcular los totales por categoría y usuario según el mes seleccionado.
     categoryTotals = widget.model.calculateCategoryShare(month: _controller.index + 1);
     userTotals = widget.model.calculateUserShare(month: _controller.index + 1);
     pieData = categoryTotals.isEmpty ? {"No data": 1} : categoryTotals;
+
+    // Ocultar el indicador de carga y mostrar los datos en la vista.
+    setState(() {
+      isLoading = false;
+    });
   }
 
   @override
@@ -51,11 +70,14 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: grey.withOpacity(0.05),
-      body: getBody(),
+      body: isLoading ? Center(child: CircularProgressIndicator()) : getBody(),
     );
   }
 
   Widget getBody() {
+    if (isLoading) {
+      return Center(child: CircularProgressIndicator()); // Muestra un indicador de carga mientras los datos se cargan.
+    }
     Map<String, String> months = {
       "1": "Enero",
       "2": "Febrero",
