@@ -49,7 +49,7 @@ class _NewEntryPageState extends State<NewEntryPage> {
       shareList = Map<String, String>.from(expense['shareBy']);
     }
 
-    // Inicializar el monto del usuario seleccionado
+    // Inicializar el monto del Persona seleccionado
     _selectedUserAmountController.text = _amountEditor.text;
   }
 
@@ -89,7 +89,7 @@ class _NewEntryPageState extends State<NewEntryPage> {
                       .map((e) => Map<String, dynamic>.from(e))
                       .toList(),
                   onChanged: (value) {
-                    // Mostrar solo el usuario seleccionado en el campo de monto
+                    // Mostrar solo el Persona seleccionado en el campo de monto
                     setState(() {
                       _selectedUserAmountController.text = _amountEditor.text;
                     });
@@ -103,7 +103,7 @@ class _NewEntryPageState extends State<NewEntryPage> {
                   controller: _amountEditor,
                   onChanged: (value) {
                     setState(() {
-                      _selectedUserAmountController.text = value; // Actualizar el monto al usuario seleccionado
+                      _selectedUserAmountController.text = value; // Actualizar el monto al Persona seleccionado
                     });
                   },
                   decoration: const InputDecoration(
@@ -126,7 +126,7 @@ class _NewEntryPageState extends State<NewEntryPage> {
                   controller: _selectedUserAmountController,
                   decoration: const InputDecoration(
                     icon: Icon(Icons.money),
-                    hintText: 'Monto para el usuario seleccionado',
+                    hintText: 'Monto para el Persona seleccionado',
                     labelText: 'Monto asignado',
                   ),
                 ),
@@ -200,7 +200,7 @@ class _NewEntryPageState extends State<NewEntryPage> {
         "item": _itemEditor.text,
         "category": _categoryEditor.text,
         "amount": _amountEditor.text,
-        "shareBy": { _personEditor.text: _selectedUserAmountController.text } // Asignar monto solo al usuario seleccionado
+        "shareBy": { _personEditor.text: _selectedUserAmountController.text } // Asignar monto solo al Persona seleccionado
       };
       model!.addExpense(data); // Llamada al método de Firestore para guardar el gasto
       return true;

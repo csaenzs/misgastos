@@ -102,7 +102,7 @@ class _ProfilePageState extends State<ProfilePage> {
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              _buildOpenContainer(context, "Usuarios", Icons.person_outline, 0),
+              _buildOpenContainer(context, "Personas", Icons.person_outline, 0),
               const Divider(indent: 30, thickness: 1.0, height: 15),
               const SizedBox(height: 10),
               _buildOpenContainer(context, "Categorías", Icons.category_outlined, 1),

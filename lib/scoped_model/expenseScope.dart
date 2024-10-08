@@ -46,7 +46,7 @@ class ExpenseModel extends Model {
       }
 
       // Verificar datos cargados
-      //print("Usuarios cargados: $_users");
+      //print("Personas cargados: $_users");
       //print("Categorías cargadas: $_categories");
       //print("Gastos cargados: $_expenses");
 
@@ -97,7 +97,7 @@ class ExpenseModel extends Model {
     }
   }
 
-  // Método para configurar la lista de usuarios
+  // Método para configurar la lista de Personas
   Future<void> setUsers(List<String> userList) async {
     try {
       await createAppDataIfNotExists(); // Asegurarse de que `app_data` exista antes de actualizar
@@ -106,7 +106,7 @@ class ExpenseModel extends Model {
       await _appDataCollection.doc('app_data').update({'users': _users});
       notifyListeners();
     } catch (e) {
-      print("Error al configurar la lista de usuarios: $e");
+      print("Error al configurar la lista de Personas: $e");
     }
   }
 
@@ -189,13 +189,13 @@ class ExpenseModel extends Model {
     return categoryShare;
   }
 
-  // Método para calcular la participación de los gastos por usuario con filtrado por mes
+  // Método para calcular la participación de los gastos por Persona con filtrado por mes
   Map<String, double> calculateUserShare({int? month}) {
     Map<String, double> userShare = {};
     List<Map<String, dynamic>> filteredExpenses = _filterExpensesByMonth(month);
 
     for (var user in _users) {
-      userShare[user] = 0.0;  // Inicializar el valor del usuario en 0.0
+      userShare[user] = 0.0;  // Inicializar el valor del Persona en 0.0
     }
 
     for (var expense in filteredExpenses) {
@@ -207,11 +207,11 @@ class ExpenseModel extends Model {
       }
     }
 
-    //print("Datos de gastos por usuario calculados: $userShare");
+    //print("Datos de gastos por Persona calculados: $userShare");
     return userShare;
   }
 
-  // Método para calcular la participación de los gastos por usuario y deuda (si aplica)
+  // Método para calcular la participación de los gastos por Persona y deuda (si aplica)
   Map<String, Map<String, double>> calculateShares({int? month}) {
     Map<String, Map<String, double>> shares = {};
     List<Map<String, dynamic>> filteredExpenses = _filterExpensesByMonth(month);

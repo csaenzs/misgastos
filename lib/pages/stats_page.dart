@@ -128,7 +128,7 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
                 children: [
                   const SizedBox(height: 30),
                   Text(
-                    widget.model.getUsers.isEmpty ? "No se han agregado usuarios" : "No se han agregado categorías",
+                    widget.model.getUsers.isEmpty ? "No se han agregado Personas" : "No se han agregado categorías",
                     style: const TextStyle(fontSize: 21),
                   ),
                   TextButton(
@@ -213,7 +213,7 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
                                       ),
                               ),
                               makeStatCard("Gastos por Categoría", Colors.pink, MaterialCommunityIcons.chart_bar, categoryTotals),
-                              makeStatCard("Gastos por Usuario", Colors.orange, MaterialIcons.account_circle, userTotals),
+                              makeStatCard("Gastos por Persona", Colors.orange, MaterialIcons.account_circle, userTotals),
                             ],
                           ),
                         ],

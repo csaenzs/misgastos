@@ -14,7 +14,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int _currentIndex = 0;
+  int _currentIndex = 1;
 
   @override
   Widget build(BuildContext context) {
@@ -39,8 +39,8 @@ class _HomePageState extends State<HomePage> {
             label: 'Informes',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Perfil',
+            icon: Icon(Icons.settings),
+            label: 'Ajustes',
           ),
         ],
       ),

@@ -4,7 +4,7 @@ import 'package:scoped_model/scoped_model.dart';
 
 class AddUserCat extends StatefulWidget {
   final BuildContext context;
-  final int type; // type 0 significa lista de usuarios y type 1 significa categoría
+  final int type; // type 0 significa lista de Personas y type 1 significa categoría
 
   const AddUserCat({Key? key, required this.context, required this.type}) : super(key: key);
 
@@ -39,14 +39,14 @@ class _AddUserCatState extends State<AddUserCat> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(isUser ? "Usuarios" : "Categorías"),
+        title: Text(isUser ? "Personas" : "Categorías"),
         actions: [
           IconButton(
             icon: const Icon(Icons.save),
             onPressed: () async {
               try {
                 if (isUser) {
-                  print('Guardando usuarios: $_userList');
+                  print('Guardando Personas: $_userList');
                   await model.setUsers(_userList); // Añadimos await para esperar la operación
                 } else {
                   print('Guardando categorías: ${_userList.map((name) => {'name': name}).toList()}');
@@ -55,7 +55,7 @@ class _AddUserCatState extends State<AddUserCat> {
                 // Mostramos un mensaje de éxito
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('${isUser ? "Usuarios" : "Categorías"} guardados exitosamente en Firestore'),
+                    content: Text('${isUser ? "Personas" : "Categorías"} guardados exitosamente en Firestore'),
                   ),
                 );
                 // Confirmar que los cambios se reflejan en Firestore
@@ -65,7 +65,7 @@ class _AddUserCatState extends State<AddUserCat> {
                 print('Error al guardar en Firestore: $e');
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Error al guardar ${isUser ? "usuarios" : "categorías"} en Firestore'),
+                    content: Text('Error al guardar ${isUser ? "Personas" : "categorías"} en Firestore'),
                   ),
                 );
               }
@@ -103,21 +103,21 @@ class _AddUserCatState extends State<AddUserCat> {
     );
   }
 
-  // Método para mostrar un diálogo y agregar un nuevo usuario o categoría
+  // Método para mostrar un diálogo y agregar un nuevo Persona o categoría
   void showUserDialog() {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Ingresar nuevo ${isUser ? "usuario" : "categoría"}:'),
+          title: Text('Ingresar nuevo ${isUser ? "Persona" : "categoría"}:'),
           content: SingleChildScrollView(
             child: ListBody(
               children: <Widget>[
                 TextFormField(
                   controller: userController,
                   decoration: InputDecoration(
-                    hintText: 'Nombre del ${isUser ? "usuario" : "categoría"}',
+                    hintText: 'Nombre del ${isUser ? "Persona" : "categoría"}',
                   ),
                 ),
               ],
@@ -155,7 +155,7 @@ class _AddUserCatState extends State<AddUserCat> {
     try {
       if (isUser) {
         await model.setUsers(_userList);
-        print('Usuarios actualizados en Firestore: $_userList');
+        print('Personas actualizados en Firestore: $_userList');
       } else {
         await model.setCategories(_userList.map((name) => {'name': name}).toList());
         print('Categorías actualizadas en Firestore: $_userList');
@@ -163,7 +163,7 @@ class _AddUserCatState extends State<AddUserCat> {
       // Mostrar un mensaje de éxito
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${isUser ? "Usuarios" : "Categorías"} actualizados exitosamente en Firestore'),
+          content: Text('${isUser ? "Personas" : "Categorías"} actualizados exitosamente en Firestore'),
         ),
       );
       // Confirmar que los cambios se reflejan en Firestore
