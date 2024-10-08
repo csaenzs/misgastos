@@ -46,9 +46,9 @@ class ExpenseModel extends Model {
       }
 
       // Verificar datos cargados
-      print("Usuarios cargados: $_users");
-      print("Categorías cargadas: $_categories");
-      print("Gastos cargados: $_expenses");
+      //print("Usuarios cargados: $_users");
+      //print("Categorías cargadas: $_categories");
+      //print("Gastos cargados: $_expenses");
 
       notifyListeners();
     } catch (e) {
@@ -185,7 +185,7 @@ class ExpenseModel extends Model {
       }
     }
 
-    print("Datos de categoría calculados: $categoryShare");
+    //print("Datos de categoría calculados: $categoryShare");
     return categoryShare;
   }
 
@@ -207,7 +207,7 @@ class ExpenseModel extends Model {
       }
     }
 
-    print("Datos de gastos por usuario calculados: $userShare");
+    //print("Datos de gastos por usuario calculados: $userShare");
     return userShare;
   }
 
@@ -233,7 +233,7 @@ class ExpenseModel extends Model {
       }
     }
 
-    print("Datos de participación de gastos calculados: $shares");
+    //print("Datos de participación de gastos calculados: $shares");
     return shares;
   }
 
