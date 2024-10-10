@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:image_gallery_saver/image_gallery_saver.dart';
 import 'package:intl/intl.dart';
 
+
 class StatsPage extends StatefulWidget {
   final ExpenseModel model;
   final Function callback;
@@ -262,7 +263,7 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
       String tempPath = (await getTemporaryDirectory()).path;
       File file = File('$tempPath/image.jpg');
       await file.writeAsBytes(imageFile);
-      await Share.shareFiles([file.path]);
+      await Share.shareXFiles([XFile(file.path)], text: 'Compartiendo archivo');
     }
   }
 

@@ -1,4 +1,4 @@
-package com.example.gastos_compartidos
+package com.arawanastudios.gastos_compartidos
 
 import io.flutter.embedding.android.FlutterActivity
 
