@@ -34,10 +34,17 @@ class _ProfilePageState extends State<ProfilePage> {
       width: double.infinity,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: myColors[1],
+          colors: [Colors.deepPurple, Colors.purpleAccent],
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            spreadRadius: 2,
+            blurRadius: 8,
+          ),
+        ],
       ),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
       child: Column(
@@ -46,35 +53,63 @@ class _ProfilePageState extends State<ProfilePage> {
           const Text(
             "Perfil de Usuario",
             style: TextStyle(
-              fontSize: 28,
+              fontSize: 32,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
           ),
+          const SizedBox(height: 20),
+          const Text(
+            "Selecciona el mes en el cual vas a organizar tus gastos y presupuesto",
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.white70,
+            ),
+          ),
           const SizedBox(height: 10),
-          DropdownButton<String>(
-            dropdownColor: Colors.white,
-            value: _selectedMonth,
-            iconEnabledColor: Colors.white,
-            underline: Container(height: 2, color: Colors.white),
-            items: List.generate(12, (index) => '${index + 1}')
-                .map((String month) => DropdownMenuItem<String>(
-                      value: month,
-                      child: Text(
-                        getMonthName(int.parse(month)),
-                        style: const TextStyle(color: Colors.black),
+          SizedBox(
+            height: 60,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: 12,
+              itemBuilder: (context, index) {
+                String month = (index + 1).toString();
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedMonth = month;
+                    });
+                    widget.model.setCurrentMonth(month);
+                  },
+                  child: Container(
+                    width: 80,
+                    margin: const EdgeInsets.symmetric(horizontal: 5),
+                    decoration: BoxDecoration(
+                      color: _selectedMonth == month
+                          ? Colors.white.withOpacity(0.9)
+                          : Colors.white.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: _selectedMonth == month
+                            ? Colors.deepPurple
+                            : Colors.transparent,
+                        width: 2,
                       ),
-                    ))
-                .toList(),
-            onChanged: (String? newMonth) {
-              if (newMonth != null) {
-                setState(() {
-                  _selectedMonth = newMonth;
-                });
-                // Actualizamos el mes en el modelo
-                widget.model.setCurrentMonth(newMonth);
-              }
-            },
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      getMonthAbbreviation(int.parse(month)),
+                      style: TextStyle(
+                        color: _selectedMonth == month
+                            ? Colors.deepPurple
+                            : Colors.black,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -121,30 +156,31 @@ class _ProfilePageState extends State<ProfilePage> {
     return GestureDetector(
       onTap: () => onTap(),
       child: Card(
-        elevation: 4,
+        elevation: 6,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(20),
         ),
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Colors.white, Colors.grey.shade200],
+              colors: [Colors.white, Colors.blue.shade50],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(20),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 40, color: Colors.blueAccent),
+              Icon(icon, size: 50, color: Colors.deepPurpleAccent),
               const SizedBox(height: 10),
               Text(
                 title,
                 style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -155,76 +191,96 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-void _showCreateBudgetModal() async {
-  // Obtén la lista actualizada de categorías desde el modelo
-  await widget.model.setInitValues(); // Esto actualiza la lista de categorías
+  void _showCreateBudgetModal() async {
+    // Obtén la lista actualizada de categorías desde el modelo
+    await widget.model.setInitValues(); // Esto actualiza la lista de categorías
 
-  showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (BuildContext context) {
-      String _selectedCategory = '';
-      double _budgetAmount = 0.0;
-      return AlertDialog(
-        title: Text('Crear Presupuesto para ${getMonthName(int.parse(_selectedMonth))}'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownSearch<String>(
-                items: widget.model.getCategories
-                    .map((category) => category['name'] as String)
-                    .toList(),
-                onChanged: (value) {
-                  setState(() {
-                    _selectedCategory = value ?? '';
-                  });
-                },
-                dropdownDecoratorProps: DropDownDecoratorProps(
-                  dropdownSearchDecoration: InputDecoration(
-                    labelText: 'Seleccionar Categoría',
-                    border: OutlineInputBorder(),
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        String _selectedCategory = '';
+        double _budgetAmount = 0.0;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15.0),
+          ),
+          title: Text('Crear Presupuesto para ${getMonthName(int.parse(_selectedMonth))}'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownSearch<String>(
+                  items: widget.model.getCategories
+                      .map((category) => category['name'] as String)
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedCategory = value ?? '';
+                    });
+                  },
+                  dropdownDecoratorProps: DropDownDecoratorProps(
+                    dropdownSearchDecoration: InputDecoration(
+                      labelText: 'Seleccionar Categoría',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                  popupProps: PopupProps.dialog(
+                    showSearchBox: true,
                   ),
                 ),
-                popupProps: PopupProps.dialog(
-                  showSearchBox: true,
+                const SizedBox(height: 16),
+                TextFormField(
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Monto del Presupuesto',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onChanged: (value) {
+                    _budgetAmount = double.tryParse(value) ?? 0.0;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.secondary,
+              ),
+              child: const Text('Cancelar'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
                 ),
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Monto del Presupuesto'),
-                onChanged: (value) {
-                  _budgetAmount = double.tryParse(value) ?? 0.0;
-                },
-              ),
-            ],
-          ),
-        ),
-        actions: <Widget>[
-          TextButton(
-            child: const Text('Cancelar'),
-            onPressed: () {
-              Navigator.of(context).pop();
-            },
-          ),
-          TextButton(
-            child: const Text('Guardar'),
-            onPressed: () async {
-              if (_selectedCategory.isNotEmpty && _budgetAmount > 0) {
-                await widget.model.setBudget(_selectedCategory, _selectedMonth, _budgetAmount);
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('Presupuesto guardado correctamente'),
-                ));
-              }
-            },
-          ),
-        ],
-      );
-    },
-  );
-}
+              child: const Text('Guardar'),
+              onPressed: () async {
+                if (_selectedCategory.isNotEmpty && _budgetAmount > 0) {
+                  await widget.model.setBudget(_selectedCategory, _selectedMonth, _budgetAmount);
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Presupuesto guardado correctamente'),
+                  ));
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   void _navigateToViewBudgetPage() {
     Navigator.push(
@@ -241,5 +297,13 @@ void _showCreateBudgetModal() async {
       'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
     ];
     return months[month - 1];
+  }
+
+  String getMonthAbbreviation(int month) {
+    const monthsAbbreviation = [
+      'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+      'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
+    ];
+    return monthsAbbreviation[month - 1];
   }
 }

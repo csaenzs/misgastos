@@ -116,6 +116,23 @@ void addExpense(Map<String, dynamic> newExpenseEntry) async {
     }
   }
 
+    Future<List<String>> getMonthsWithBudgets() async {
+    try {
+      QuerySnapshot snapshot = await _budgetsCollection.get();
+      Set<String> months = {};
+
+      for (var document in snapshot.docs) {
+        String month = document['month'];
+        months.add(month);
+      }
+
+      return months.toList()..sort((a, b) => int.parse(a).compareTo(int.parse(b)));
+    } catch (e) {
+      print("Error al obtener los meses con presupuestos: $e");
+      return [];
+    }
+  }
+
   Future<double> getBudget(String category, String month) async {
     try {
       String formattedMonth = month.padLeft(2, '0'); // Asegúrate de que el mes sea siempre de dos dígitos

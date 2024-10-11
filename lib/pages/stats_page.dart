@@ -92,18 +92,18 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
       return Center(child: CircularProgressIndicator()); // Muestra un indicador de carga mientras los datos se cargan.
     }
     Map<String, String> months = {
-      "1": "Enero",
-      "2": "Febrero",
-      "3": "Marzo",
-      "4": "Abril",
-      "5": "Mayo",
-      "6": "Junio",
-      "7": "Julio",
-      "8": "Agosto",
-      "9": "Septiembre",
-      "10": "Octubre",
-      "11": "Noviembre",
-      "12": "Diciembre",
+      "1": "Ene",
+      "2": "Feb",
+      "3": "Mar",
+      "4": "Abr",
+      "5": "May",
+      "6": "Jun",
+      "7": "Jul",
+      "8": "Ago",
+      "9": "Sep",
+      "10": "Oct",
+      "11": "Nov",
+      "12": "Dic",
       "13": "Todos"
     };
 
@@ -279,147 +279,146 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
     }
   }
 
-Widget makeStatCard(String cardType, MaterialColor color, IconData icon, Map<String, dynamic> displayData) {
-  final formatCurrency = NumberFormat('#,##0', 'es_CO');
-  return Padding(
-    padding: const EdgeInsets.all(10),
-    child: Card(
-      elevation: 5.0,
-      child: Container(
-        decoration: BoxDecoration(
-          color: white,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: [
-            BoxShadow(
-              color: grey.withOpacity(0.01),
-              spreadRadius: 10,
-              blurRadius: 3,
-            ),
-          ],
-        ),
-        width: double.infinity,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 5, bottom: 5, left: 5, right: 5),
-              child: Row(
-                children: [
-                  Icon(icon),
-                  const SizedBox(width: 10),
-                  Text(
-                    cardType,
-                    style: TextStyle(
-                      fontSize: 20,
-                      color: color.shade800,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
+  Widget makeStatCard(String cardType, MaterialColor color, IconData icon, Map<String, dynamic> displayData) {
+    final formatCurrency = NumberFormat('#,##0', 'es_CO');
+    return Padding(
+      padding: const EdgeInsets.all(10),
+      child: Card(
+        elevation: 5.0,
+        child: Container(
+          decoration: BoxDecoration(
+            color: white,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: [
+              BoxShadow(
+                color: grey.withOpacity(0.01),
+                spreadRadius: 10,
+                blurRadius: 3,
               ),
-            ),
-            const Divider(thickness: 3.0, height: 15),
-            Padding(
-              padding: const EdgeInsets.all(7),
-              child: Column(
-                children: displayData.entries.map((entry) {
-                  if (entry.value is Map<String, double>) {
-                    // Para la sección de "Gastos por Categoría" con presupuesto y saldo.
-                    final data = entry.value as Map<String, double>;
-                    return Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: Text(
+            ],
+          ),
+          width: double.infinity,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 5, bottom: 5, left: 5, right: 5),
+                child: Row(
+                  children: [
+                    Icon(icon),
+                    const SizedBox(width: 10),
+                    Text(
+                      cardType,
+                      style: TextStyle(
+                        fontSize: 20,
+                        color: color.shade800,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(thickness: 3.0, height: 15),
+              Padding(
+                padding: const EdgeInsets.all(7),
+                child: Column(
+                  children: displayData.entries.map((entry) {
+                    if (entry.value is Map<String, double>) {
+                      // Para la sección de "Gastos por Categoría" con presupuesto y saldo.
+                      final data = entry.value as Map<String, double>;
+                      return Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Text(
+                                  entry.key,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  "Gasto: COP ${formatCurrency.format(data['totalExpense']!)}",
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                  textAlign: TextAlign.right,
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  "Presup: COP ${formatCurrency.format(data['budget']!)}",
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                  textAlign: TextAlign.right,
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  "Saldo: COP ${formatCurrency.format(data['remaining']!)}",
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                  textAlign: TextAlign.right,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Divider(thickness: 0.8, indent: 5, endIndent: 5),
+                        ],
+                      );
+                    } else {
+                      // Para otras secciones (como "Gastos por Persona").
+                      return Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
                                 entry.key,
                                 style: const TextStyle(
-                                  fontSize: 16,
+                                  fontSize: 17,
                                   color: Colors.black,
                                   fontWeight: FontWeight.w500,
                                 ),
-                                overflow: TextOverflow.ellipsis,
                               ),
-                            ),
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                "Gasto: COP ${formatCurrency.format(data['totalExpense']!)}",
+                              Text(
+                                "COP ${formatCurrency.format(entry.value)}",
                                 style: const TextStyle(
-                                  fontSize: 14,
+                                  fontSize: 17,
                                   color: Colors.black,
-                                  fontWeight: FontWeight.w400,
+                                  fontWeight: FontWeight.w500,
                                 ),
-                                textAlign: TextAlign.right,
                               ),
-                            ),
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                "Presup: COP ${formatCurrency.format(data['budget']!)}",
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                                textAlign: TextAlign.right,
-                              ),
-                            ),
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                "Saldo: COP ${formatCurrency.format(data['remaining']!)}",
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                                textAlign: TextAlign.right,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const Divider(thickness: 0.8, indent: 5, endIndent: 5),
-                      ],
-                    );
-                  } else {
-                    // Para otras secciones (como "Gastos por Persona").
-                    return Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              entry.key,
-                              style: const TextStyle(
-                                fontSize: 17,
-                                color: Colors.black,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            Text(
-                              "COP ${formatCurrency.format(entry.value)}",
-                              style: const TextStyle(
-                                fontSize: 17,
-                                color: Colors.black,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const Divider(thickness: 0.8, indent: 5, endIndent: 5),
-                      ],
-                    );
-                  }
-                }).toList(),
+                            ],
+                          ),
+                          const Divider(thickness: 0.8, indent: 5, endIndent: 5),
+                        ],
+                      );
+                    }
+                  }).toList(),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
-
+    );
+  }
 }

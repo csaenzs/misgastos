@@ -39,10 +39,16 @@ class _AddUserCatState extends State<AddUserCat> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(isUser ? "Personas" : "Categorías"),
+        title: Text(
+          isUser ? "Personas" : "Categorías",
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.save),
+            icon: const Icon(Icons.save, color: Colors.white),
             onPressed: () async {
               try {
                 if (isUser) {
@@ -75,26 +81,43 @@ class _AddUserCatState extends State<AddUserCat> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        backgroundColor: Theme.of(context).colorScheme.secondary,
         onPressed: showUserDialog,
-        child: const Icon(Icons.add),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
       body: Container(
-        padding: const EdgeInsets.all(8.0),
+        padding: const EdgeInsets.all(16.0),
         child: ListView.builder(
           itemCount: _userList.length,
           itemBuilder: (context, index) {
-            return ListTile(
-              leading: isUser ? const Icon(Icons.person_outline) : const Icon(Icons.category_outlined),
-              title: Text(_userList[index]),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                onPressed: () {
-                  setState(() {
-                    _userList.removeAt(index);
-                  });
-                  // Actualizar la lista en el modelo después de eliminar
-                  _updateModelList();
-                },
+            return Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15.0),
+              ),
+              elevation: 4,
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(context).colorScheme.secondary.withOpacity(0.3),
+                  child: Icon(
+                    isUser ? Icons.person_outline : Icons.category_outlined,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                ),
+                title: Text(
+                  _userList[index],
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                  onPressed: () {
+                    setState(() {
+                      _userList.removeAt(index);
+                    });
+                    // Actualizar la lista en el modelo después de eliminar
+                    _updateModelList();
+                  },
+                ),
               ),
             );
           },
@@ -110,6 +133,9 @@ class _AddUserCatState extends State<AddUserCat> {
       barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15.0),
+          ),
           title: Text('Ingresar nuevo ${isUser ? "Persona" : "categoría"}:'),
           content: SingleChildScrollView(
             child: ListBody(
@@ -118,6 +144,9 @@ class _AddUserCatState extends State<AddUserCat> {
                   controller: userController,
                   decoration: InputDecoration(
                     hintText: 'Nombre del ${isUser ? "Persona" : "categoría"}',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
               ],
@@ -125,6 +154,22 @@ class _AddUserCatState extends State<AddUserCat> {
           ),
           actions: <Widget>[
             TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.secondary,
+              ),
+              child: const Text('Cancelar'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+              ),
               child: const Text('Aceptar'),
               onPressed: () {
                 Navigator.of(context).pop();
@@ -136,12 +181,6 @@ class _AddUserCatState extends State<AddUserCat> {
                 });
                 // Actualizar la lista en el modelo después de agregar un nuevo elemento
                 _updateModelList();
-              },
-            ),
-            TextButton(
-              child: const Text('Cancelar'),
-              onPressed: () {
-                Navigator.of(context).pop();
               },
             ),
           ],
