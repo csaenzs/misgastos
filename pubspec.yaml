@@ -39,6 +39,8 @@ dependencies:
   pie_chart: ^5.1.0
   sqflite: ^2.0.1
   share_plus: ^10.0.3
+  #dependencia para crear busquedas en un select
+  dropdown_search: ^5.0.2
   
   # Dependencia local
   image_gallery_saver:

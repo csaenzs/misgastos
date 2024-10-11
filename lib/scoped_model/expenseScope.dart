@@ -1,9 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:scoped_model/scoped_model.dart';
+import 'package:intl/intl.dart';
 
 class ExpenseModel extends Model {
   final CollectionReference _expensesCollection = FirebaseFirestore.instance.collection('expenses');
   final CollectionReference _appDataCollection = FirebaseFirestore.instance.collection('app_data');
+  final CollectionReference _budgetsCollection = FirebaseFirestore.instance.collection('budgets');
 
   List<Map<String, dynamic>> _expenses = [];
   List<Map<String, dynamic>> _categories = [];
@@ -21,81 +23,194 @@ class ExpenseModel extends Model {
   }
 
   // Método para inicializar valores desde Firestore
-Future<void> setInitValues() async {
+  Future<void> setInitValues() async {
+    try {
+      await createAppDataIfNotExists();  // Crear el documento si no existe
+
+      DocumentSnapshot snapshot = await _appDataCollection.doc('app_data').get();
+      if (snapshot.exists) {
+        _users = List<String>.from(snapshot['users'] ?? []);
+        _categories = List<Map<String, dynamic>>.from(snapshot['categories'] ?? []);
+        _currentMonth = snapshot['currentMonth'] ?? '1';
+      } else {
+        _users = [];
+        _categories = [];
+        _currentMonth = '1';
+      }
+
+      QuerySnapshot expensesSnapshot = await _expensesCollection.get();
+      if (expensesSnapshot.docs.isNotEmpty) {
+        _expenses = expensesSnapshot.docs
+            .map((e) => Map<String, dynamic>.from(e.data() as Map<String, dynamic>))
+            .toList();
+      } else {
+        _expenses = [];
+      }
+
+      notifyListeners();
+    } catch (e) {
+      print("Error al inicializar valores: $e");
+    }
+  }
+
+void addExpense(Map<String, dynamic> newExpenseEntry) async {
   try {
-    await createAppDataIfNotExists();  // Crear el documento si no existe
+    String category = newExpenseEntry['category'];
+    double amount = double.tryParse(newExpenseEntry['amount']) ?? 0.0;
 
-    DocumentSnapshot snapshot = await _appDataCollection.doc('app_data').get();
-    if (snapshot.exists) {
-      _users = List<String>.from(snapshot['users'] ?? []);
-      _categories = List<Map<String, dynamic>>.from(snapshot['categories'] ?? []);
-      _currentMonth = snapshot['currentMonth'] ?? '1';
-    } else {
-      _users = [];
-      _categories = [];
-      _currentMonth = '1';
+    // Verificar que el monto sea válido
+    if (amount <= 0) {
+      print("Error: El monto ingresado no es válido.");
+      return;
     }
 
-    QuerySnapshot expensesSnapshot = await _expensesCollection.get();
-    if (expensesSnapshot.docs.isNotEmpty) {
-      _expenses = expensesSnapshot.docs
-          .map((e) => Map<String, dynamic>.from(e.data() as Map<String, dynamic>))
-          .toList();
-    } else {
-      _expenses = [];
+    // Obtener el presupuesto actual y calcular los gastos actuales
+    double budget = await getBudget(category, getCurrentMonth); // Obteniendo el presupuesto actual
+    double totalExpenses = calculateTotalExpenseForCategory(category, getCurrentMonth); // Calculando los gastos actuales
+
+    double remainingBudget = budget - totalExpenses;
+
+    // Verificar los valores de presupuesto, gastos, y saldo restante
+    print("Presupuesto para $category en mes $_currentMonth: $budget");
+    print("Gastos totales para $category en mes $_currentMonth: $totalExpenses");
+    print("Saldo restante para $category en mes $_currentMonth: $remainingBudget");
+
+    // Realizar la validación de presupuesto con valores actualizados
+    if (amount > remainingBudget) {
+      print("Error: El gasto excede el presupuesto disponible. Presupuesto: $budget, Gastos: $totalExpenses, Resto: $remainingBudget");
+      return;
     }
-    /*
-    print("Usuarios cargados: $_users");
-    print("Categorías cargadas: $_categories");
-    print("Gastos cargados: $_expenses");
-    */
+
+    // Si el gasto no excede el presupuesto, entonces agrega el gasto
+    DocumentReference docRef = await _expensesCollection.add(newExpenseEntry);
+    String expenseId = docRef.id; // Obtener el ID generado por Firestore
+    newExpenseEntry['id'] = expenseId; // Asignar el ID al gasto
+    _expenses.insert(0, newExpenseEntry); // Insertar en la lista con el ID asignado
+
+    print("Gasto agregado correctamente con ID: $expenseId");
 
     notifyListeners();
   } catch (e) {
-    print("Error al inicializar valores: $e");
+    print("Error al agregar un nuevo gasto: $e");
   }
 }
 
 
-  // Método para agregar un nuevo gasto
-  void addExpense(Map<String, dynamic> newExpenseEntry) async {
+  // Método para establecer el presupuesto de una categoría
+  Future<void> setBudget(String category, String month, double amount) async {
     try {
-      DocumentReference docRef = await _expensesCollection.add(newExpenseEntry);
-      String expenseId = docRef.id; // Obtener el ID generado por Firestore
-      newExpenseEntry['id'] = expenseId; // Asignar el ID al gasto
-      _expenses.insert(0, newExpenseEntry); // Insertar en la lista con el ID asignado
+      // Definir el ID del documento de presupuesto correctamente formateado
+      String documentId = '$category-$month';
+
+      // Utilizar la referencia correcta a la colección budgets
+      await _budgetsCollection.doc(documentId).set({
+        'category': category,
+        'month': month,
+        'amount': amount,
+      });
+
+      print("Presupuesto guardado: $category-$month -> $amount");
       notifyListeners();
     } catch (e) {
-      print("Error al agregar un nuevo gasto: $e");
+      print("Error al establecer el presupuesto: $e");
     }
   }
 
-  // Método para eliminar un gasto según su índice
-  void deleteExpense(int index) async {
+  Future<double> getBudget(String category, String month) async {
     try {
-      String expenseId = _expenses[index]['id'] ?? '';
-      if (expenseId.isNotEmpty) {
-        await _expensesCollection.doc(expenseId).delete();
+      String formattedMonth = month.padLeft(2, '0'); // Asegúrate de que el mes sea siempre de dos dígitos
+      String documentId = '$category-$formattedMonth';
+
+      // Consulta el presupuesto correspondiente
+      DocumentSnapshot snapshot = await _budgetsCollection.doc(documentId).get();
+
+      if (snapshot.exists) {
+        double amount = snapshot['amount'] is int ? (snapshot['amount'] as int).toDouble() : snapshot['amount'];
+        print("Presupuesto encontrado para $documentId: $amount");
+        return amount;
+      } else {
+        print("No se encontró presupuesto para $documentId");
+        return 0.0; // Si no hay presupuesto, devolver 0
       }
-      _expenses.removeAt(index);
-      notifyListeners();
     } catch (e) {
-      print("Error al eliminar el gasto: $e");
+      print("Error al obtener el presupuesto: $e");
+      return 0.0;
     }
   }
 
-  // Método para editar un gasto existente
-  void editExpense(int index, Map<String, dynamic> updatedExpenseEntry) async {
+  // Método para obtener el presupuesto restante de una categoría en un mes
+  Future<double> getRemainingBudget(String category, String month) async {
+    double budget = await getBudget(category, month);
+    double totalExpenses = _expenses
+        .where((expense) =>
+            expense['category'] == category &&
+            _getMonthFromDateString(expense['date']) == month)
+        .fold(0.0, (sum, expense) => sum + _convertToDouble(expense['amount']));
+    double remaining = budget - totalExpenses;
+    print("Presupuesto obtenido para $category: $budget");
+    print("Gastos totales para $category: $totalExpenses");
+    print("Saldo restante para $category: $remaining");
+    return remaining;
+  }
+
+  // Método para calcular el total de los gastos para una categoría y un mes específico
+  double calculateTotalExpenseForCategory(String category, String month) {
+    String formattedMonth = month.padLeft(2, '0'); // Asegúrate de que el mes tenga siempre dos dígitos
+
+    return _expenses
+        .where((expense) =>
+            expense['category'] == category &&
+            _getMonthFromDateString(expense['date']) == formattedMonth)
+        .fold(0.0, (sum, expense) => sum + _convertToDouble(expense['amount']));
+  }
+
+  // Método para obtener el mes de una fecha en formato "dd-MM-yyyy"
+  String _getMonthFromDateString(String date) {
     try {
-      String expenseId = _expenses[index]['id'] ?? '';
-      if (expenseId.isNotEmpty) {
-        await _expensesCollection.doc(expenseId).update(updatedExpenseEntry);
-      }
-      _expenses[index] = updatedExpenseEntry;
-      notifyListeners();
+      DateTime parsedDate = DateFormat('dd-MM-yyyy').parse(date);
+      return parsedDate.month.toString();
     } catch (e) {
-      print("Error al editar el gasto: $e");
+      print("Error al parsear la fecha: $e");
+      return '';
     }
+  }
+
+  // Método para crear el documento `app_data` si no existe
+  Future<void> createAppDataIfNotExists() async {
+    DocumentSnapshot doc = await _appDataCollection.doc('app_data').get();
+    if (!doc.exists) {
+      // Crea el documento app_data sin incluir referencias a otras colecciones
+      await _appDataCollection.doc('app_data').set({
+        'users': [],
+        'categories': [],
+        'currentMonth': '1',
+      });
+    }
+  }
+
+  // Método para convertir a double los valores de amount
+  double _convertToDouble(dynamic value) {
+    try {
+      if (value is String) {
+        return double.tryParse(value) ?? 0.0;
+      } else if (value is int) {
+        return value.toDouble();
+      } else if (value is double) {
+        return value;
+      } else {
+        return 0.0; // Valor predeterminado para datos no numéricos
+      }
+    } catch (e) {
+      print("Error al convertir a double: $e");
+      return 0.0;
+    }
+  }
+
+  // Método para establecer el mes actual
+  void setCurrentMonth(String month) async {
+    _currentMonth = month.padLeft(2, '0'); // Asegúrate de que siempre sea de dos dígitos
+    await _appDataCollection.doc('app_data').update({'currentMonth': _currentMonth});
+    notifyListeners();
   }
 
   // Método para configurar la lista de Personas
@@ -124,49 +239,19 @@ Future<void> setInitValues() async {
     }
   }
 
-  // Método para restablecer todos los datos
-  void resetAll() async {
-    _categories = [];
-    _users = [];
-    _expenses = [];
-    await _appDataCollection.doc('app_data').delete();
-    await _expensesCollection.get().then((snapshot) {
-      for (DocumentSnapshot ds in snapshot.docs) {
-        ds.reference.delete();
-      }
-    });
-    notifyListeners();
-  }
-
-  // Método para cargar nuevos datos desde una importación
-  void newDataLoaded(List<String> users, List<Map<String, dynamic>> categories, List<Map<String, dynamic>> expenses) {
-    _users = users;
-    _categories = categories;
-    _expenses = expenses;
-    notifyListeners();
-  }
-
-  // Método para establecer el mes actual
-  void setCurrentMonth(String month) async {
-    _currentMonth = month;
-    await _appDataCollection.doc('app_data').update({'currentMonth': _currentMonth});
-    notifyListeners();
-  }
-
   // Método para obtener el snapshot de `app_data`
   Future<DocumentSnapshot> getAppDataSnapshot() async {
     return await _appDataCollection.doc('app_data').get();
   }
 
-  // Método para crear el documento `app_data` si no existe
-  Future<void> createAppDataIfNotExists() async {
-    DocumentSnapshot doc = await _appDataCollection.doc('app_data').get();
-    if (!doc.exists) {
-      await _appDataCollection.doc('app_data').set({
-        'users': [],
-        'categories': [],
-        'currentMonth': '1',
-      });
+  // Método para obtener todos los presupuestos para un mes específico
+  Future<List<Map<String, dynamic>>> getBudgetsForMonth(String month) async {
+    try {
+      QuerySnapshot snapshot = await _budgetsCollection.where('month', isEqualTo: month).get();
+      return snapshot.docs.map((e) => e.data() as Map<String, dynamic>).toList();
+    } catch (e) {
+      print("Error al obtener los presupuestos del mes: $e");
+      return [];
     }
   }
 
@@ -186,7 +271,6 @@ Future<void> setInitValues() async {
       }
     }
 
-    //print("Datos de categoría calculados: $categoryShare");
     return categoryShare;
   }
 
@@ -208,34 +292,7 @@ Future<void> setInitValues() async {
       }
     }
 
-    //print("Datos de gastos por Persona calculados: $userShare");
     return userShare;
-  }
-
-  // Método para calcular la participación de los gastos por Persona y deuda (si aplica)
-  Map<String, Map<String, double>> calculateShares({int? month}) {
-    Map<String, Map<String, double>> shares = {};
-    List<Map<String, dynamic>> filteredExpenses = _filterExpensesByMonth(month);
-
-    for (var user in _users) {
-      shares[user] = {
-        "Gastos Totales": 0.0,
-        "Deuda Total": 0.0,
-        "Deuda Neta": 0.0,
-      };
-    }
-
-    for (var expense in filteredExpenses) {
-      String user = expense['person'] ?? 'Unknown';
-      double amount = _convertToDouble(expense['amount']);
-
-      if (shares.containsKey(user)) {
-        shares[user]!["Gastos Totales"] = shares[user]!["Gastos Totales"]! + amount;
-      }
-    }
-
-    //print("Datos de participación de gastos calculados: $shares");
-    return shares;
   }
 
   // Método para filtrar los gastos por el mes especificado
@@ -254,24 +311,6 @@ Future<void> setInitValues() async {
         }
         return false;
       }).toList();
-    }
-  }
-
-  // Método para convertir a double los valores de amount
-  double _convertToDouble(dynamic value) {
-    try {
-      if (value is String) {
-        return double.tryParse(value) ?? 0.0;
-      } else if (value is int) {
-        return value.toDouble();
-      } else if (value is double) {
-        return value;
-      } else {
-        return 0.0; // Valor predeterminado para datos no numéricos
-      }
-    } catch (e) {
-      print("Error al convertir a double: $e");
-      return 0.0;
     }
   }
 }

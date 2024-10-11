@@ -10,7 +10,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:image_gallery_saver/image_gallery_saver.dart';
 import 'package:intl/intl.dart';
 
-
 class StatsPage extends StatefulWidget {
   final ExpenseModel model;
   final Function callback;
@@ -23,23 +22,22 @@ class StatsPage extends StatefulWidget {
 
 class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMixin {
   late Map<String, double> categoryTotals;
+  late Map<String, Map<String, double>> categoryDetails; // Para almacenar el gasto, presupuesto y saldo restante.
   late Map<String, double> userTotals;
   late Map<String, double> pieData = {}; // Inicialización con un mapa vacío.
   late List<String> users;
   final ScreenshotController _screenShotController = ScreenshotController();
   late TabController _controller;
 
-  bool isLoading = true;  // Nueva variable para indicar si los datos están cargando
+  bool isLoading = true; // Nueva variable para indicar si los datos están cargando
 
   @override
   void initState() {
     super.initState();
     _controller = TabController(vsync: this, length: 13, initialIndex: DateTime.now().month - 1);
-     pieData = {}; // Asigna un valor predeterminado inicial.
+    pieData = {}; // Asigna un valor predeterminado inicial.
     _loadData(); // Llamar al método que carga los datos
   }
-
-  
 
   void _loadData() async {
     // Mostrar el indicador de carga antes de iniciar el proceso.
@@ -54,6 +52,20 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
     categoryTotals = widget.model.calculateCategoryShare(month: _controller.index + 1);
     userTotals = widget.model.calculateUserShare(month: _controller.index + 1);
     pieData = categoryTotals.isEmpty ? {"No data": 1} : categoryTotals;
+
+    // Obtener los presupuestos y calcular el saldo restante por categoría.
+    categoryDetails = {};
+    for (String category in categoryTotals.keys) {
+      double budget = await widget.model.getBudget(category, (_controller.index + 1).toString());
+      double totalExpense = categoryTotals[category]!;
+      double remainingBudget = budget - totalExpense;
+
+      categoryDetails[category] = {
+        "totalExpense": totalExpense,
+        "budget": budget,
+        "remaining": remainingBudget,
+      };
+    }
 
     // Ocultar el indicador de carga y mostrar los datos en la vista.
     setState(() {
@@ -235,7 +247,7 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
                                         ),
                                       ),
                               ),
-                              makeStatCard("Gastos por Categoría", Colors.pink, MaterialCommunityIcons.chart_bar, categoryTotals),
+                              makeStatCard("Gastos por Categoría", Colors.pink, MaterialCommunityIcons.chart_bar, categoryDetails),
                               makeStatCard("Gastos por Persona", Colors.orange, MaterialIcons.account_circle, userTotals),
                             ],
                           ),
@@ -267,51 +279,114 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
     }
   }
 
-  Widget makeStatCard(String cardType, MaterialColor color, IconData icon, Map<String, double> displayData) {
-    final formatCurrency = NumberFormat('#,##0', 'es_CO');
-    return Padding(
-      padding: const EdgeInsets.all(10),
-      child: Card(
-        elevation: 5.0,
-        child: Container(
-          decoration: BoxDecoration(
-            color: white,
-            borderRadius: BorderRadius.circular(10),
-            boxShadow: [
-              BoxShadow(
-                color: grey.withOpacity(0.01),
-                spreadRadius: 10,
-                blurRadius: 3,
-              ),
-            ],
-          ),
-          width: double.infinity,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 5, bottom: 5, left: 5, right: 5),
-                child: Row(
-                  children: [
-                    Icon(icon),
-                    const SizedBox(width: 10),
-                    Text(
-                      cardType,
-                      style: TextStyle(
-                        fontSize: 20,
-                        color: color.shade800,
-                        fontWeight: FontWeight.w500,
-                      ),
+Widget makeStatCard(String cardType, MaterialColor color, IconData icon, Map<String, dynamic> displayData) {
+  final formatCurrency = NumberFormat('#,##0', 'es_CO');
+  return Padding(
+    padding: const EdgeInsets.all(10),
+    child: Card(
+      elevation: 5.0,
+      child: Container(
+        decoration: BoxDecoration(
+          color: white,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: [
+            BoxShadow(
+              color: grey.withOpacity(0.01),
+              spreadRadius: 10,
+              blurRadius: 3,
+            ),
+          ],
+        ),
+        width: double.infinity,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 5, bottom: 5, left: 5, right: 5),
+              child: Row(
+                children: [
+                  Icon(icon),
+                  const SizedBox(width: 10),
+                  Text(
+                    cardType,
+                    style: TextStyle(
+                      fontSize: 20,
+                      color: color.shade800,
+                      fontWeight: FontWeight.w500,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              const Divider(thickness: 3.0, height: 15),
-              Padding(
-                padding: const EdgeInsets.all(7),
-                child: Column(
-                  children: displayData.entries.map((entry) {
+            ),
+            const Divider(thickness: 3.0, height: 15),
+            Padding(
+              padding: const EdgeInsets.all(7),
+              child: Column(
+                children: displayData.entries.map((entry) {
+                  if (entry.value is Map<String, double>) {
+                    // Para la sección de "Gastos por Categoría" con presupuesto y saldo.
+                    final data = entry.value as Map<String, double>;
                     return Column(
-                      children: <Widget>[
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                entry.key,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                "Gasto: COP ${formatCurrency.format(data['totalExpense']!)}",
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                                textAlign: TextAlign.right,
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                "Presup: COP ${formatCurrency.format(data['budget']!)}",
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                                textAlign: TextAlign.right,
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                "Saldo: COP ${formatCurrency.format(data['remaining']!)}",
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                                textAlign: TextAlign.right,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Divider(thickness: 0.8, indent: 5, endIndent: 5),
+                      ],
+                    );
+                  } else {
+                    // Para otras secciones (como "Gastos por Persona").
+                    return Column(
+                      children: [
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -336,13 +411,15 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
                         const Divider(thickness: 0.8, indent: 5, endIndent: 5),
                       ],
                     );
-                  }).toList(),
-                ),
+                  }
+                }).toList(),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
+
 }
