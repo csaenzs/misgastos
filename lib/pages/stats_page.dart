@@ -22,42 +22,40 @@ class StatsPage extends StatefulWidget {
 
 class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMixin {
   late Map<String, double> categoryTotals;
-  late Map<String, Map<String, double>> categoryDetails; // Para almacenar el gasto, presupuesto y saldo restante.
-  late Map<String, double> userTotals;
-  late Map<String, double> pieData = {}; // Inicialización con un mapa vacío.
-  late List<String> users;
+  late Map<String, Map<String, double>> categoryDetails;
+  late Map<String, double> incomeCategoryTotals;
+  late Map<String, double> pieData = {};
   final ScreenshotController _screenShotController = ScreenshotController();
   late TabController _controller;
   late double totalGastosInforme;
+  late double totalIngresosInforme;
+  late double balanceInforme;
 
-  bool isLoading = true; // Nueva variable para indicar si los datos están cargando
+  bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _controller = TabController(vsync: this, length: 13, initialIndex: DateTime.now().month - 1);
-    pieData = {}; // Asigna un valor predeterminado inicial.
-    _loadData(); // Llamar al método que carga los datos
+    pieData = {};
+    _loadData();
   }
 
   void _loadData() async {
-    // Mostrar el indicador de carga antes de iniciar el proceso.
     setState(() {
       isLoading = true;
     });
 
-    // Cargar los valores iniciales del modelo.
     await widget.model.setInitValues();
 
-    // Calcular los totales por categoría y usuario según el mes seleccionado.
     categoryTotals = widget.model.calculateCategoryShare(month: _controller.index + 1);
-    userTotals = widget.model.calculateUserShare(month: _controller.index + 1);
+    incomeCategoryTotals = widget.model.calculateIncomeCategoryShare(month: _controller.index + 1);
     pieData = categoryTotals.isEmpty ? {"No data": 1} : categoryTotals;
 
-    // Agrega esta línea para calcular el total de los gastos
     totalGastosInforme = categoryTotals.values.fold(0.0, (sum, value) => sum + value);
+    totalIngresosInforme = incomeCategoryTotals.values.fold(0.0, (sum, value) => sum + value);
+    balanceInforme = totalIngresosInforme - totalGastosInforme;
 
-    // Obtener los presupuestos y calcular el saldo restante por categoría.
     categoryDetails = {};
     for (String category in categoryTotals.keys) {
       double budget = await widget.model.getBudget(category, (_controller.index + 1).toString());
@@ -71,7 +69,6 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
       };
     }
 
-    // Ocultar el indicador de carga y mostrar los datos en la vista.
     setState(() {
       isLoading = false;
     });
@@ -92,9 +89,6 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
   }
 
   Widget getBody() {
-    if (isLoading) {
-      return Center(child: CircularProgressIndicator()); // Muestra un indicador de carga mientras los datos se cargan.
-    }
     Map<String, String> months = {
       "1": "Ene",
       "2": "Feb",
@@ -140,20 +134,32 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
                   children: [
                     Column(
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              "Total Gastos: COP ${NumberFormat('#,##0', 'es_CO').format(totalGastosInforme)}",
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
+                        Text(
+                          "Total Gastos: COP ${NumberFormat('#,##0', 'es_CO').format(totalGastosInforme)}",
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                         ),
                         const SizedBox(height: 10),
+                        Text(
+                          "Total Ingresos: COP ${NumberFormat('#,##0', 'es_CO').format(totalIngresosInforme)}",
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          "Balance: COP ${NumberFormat('#,##0', 'es_CO').format(balanceInforme)}",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: balanceInforme >= 0 ? Colors.green : Colors.red,
+                          ),
+                        ),
                       ],
                     ),
                     SizedBox(
@@ -220,7 +226,6 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
                                 ),
                               ),
                               const Padding(padding: EdgeInsets.all(1)),
-                              // Si `pieData` está vacío, mostramos un mensaje en lugar del gráfico.
                               Container(
                                 child: pieData.isEmpty
                                     ? Padding(
@@ -262,7 +267,7 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
                                       ),
                               ),
                               makeStatCard("Gastos por Categoría", Colors.pink, MaterialCommunityIcons.chart_bar, categoryDetails),
-                              makeStatCard("Gastos por Persona", Colors.orange, MaterialIcons.account_circle, userTotals),
+                              makeStatCard("Ingresos por Categoría", Colors.orange, MaterialIcons.account_circle, incomeCategoryTotals),
                             ],
                           ),
                         ],
@@ -337,7 +342,6 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
                 child: Column(
                   children: displayData.entries.map((entry) {
                     if (entry.value is Map<String, double>) {
-                      // Para la sección de "Gastos por Categoría" con presupuesto y saldo.
                       final data = entry.value as Map<String, double>;
                       return Column(
                         children: [
@@ -398,7 +402,6 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
                         ],
                       );
                     } else {
-                      // Para otras secciones (como "Gastos por Persona").
                       return Column(
                         children: [
                           Row(

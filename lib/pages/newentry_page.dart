@@ -26,27 +26,35 @@ class _NewEntryPageState extends State<NewEntryPage> {
 
   ExpenseModel? model;
   List<String> _users = [];
+  List<String> _accounts = [];
+  String? _selectedAccount;
+  String? _selectedPerson;
+  String? _selectedCategory;
   bool _isAmountExceeding = false;
 
   // Variables relacionadas al presupuesto
-  String _selectedCategory = '';
   double _budgetAmount = 0.0;
   double _remainingBudget = 0.0;
+  bool _isIncome = false;
 
   @override
   void initState() {
     super.initState();
     model = ScopedModel.of(widget.context);
     _users = model!.getUsers;
+    _accounts = model!.getAccounts.map((e) => e['name'] as String).toList();
 
-    // Inicializar los valores si estamos editando un registro existente
     if (widget.index != -999) {
-      Map<String, dynamic> expense = model!.getExpenses[widget.index];
-      _itemEditor.text = expense['item'];
-      _personEditor.text = expense['person'];
-      _amountEditor.text = expense['amount'];
-      _categoryEditor.text = expense['category'];
-      _dateEditor.text = expense['date'];
+      Map<String, dynamic> entry = _isIncome ? model!.getIncomes[widget.index] : model!.getExpenses[widget.index];
+      _itemEditor.text = entry['item'];
+      _personEditor.text = entry['person'];
+      _amountEditor.text = entry['amount'];
+      _categoryEditor.text = entry['category'];
+      _dateEditor.text = entry['date'];
+      _selectedAccount = entry['account'] ?? '';
+      _selectedPerson = entry['person'] ?? '';
+      _selectedCategory = entry['category'] ?? '';
+      _isIncome = entry['isIncome'] ?? false;
     }
   }
 
@@ -55,7 +63,7 @@ class _NewEntryPageState extends State<NewEntryPage> {
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(color: Colors.white),
-        title: const Text('Nuevo Gasto'),
+        title: const Text('Nuevo Registro'),
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -75,56 +83,135 @@ class _NewEntryPageState extends State<NewEntryPage> {
             key: formKey,
             child: Column(
               children: <Widget>[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text("Gasto"),
+                    Switch(
+                      value: _isIncome,
+                      onChanged: (value) {
+                        setState(() {
+                          _isIncome = value;
+                          _selectedCategory = null;
+                        });
+                      },
+                    ),
+                    const Text("Ingreso"),
+                  ],
+                ),
+                const SizedBox(height: 9),
                 TextFormField(
                   autovalidateMode: AutovalidateMode.disabled,
                   decoration: const InputDecoration(
                     icon: Icon(Icons.shopping_cart_outlined),
-                    hintText: '¿En qué gastaste el dinero?',
-                    labelText: 'Descripción del Gasto',
+                    hintText: '¿En qué gastaste o recibiste el dinero?',
+                    labelText: 'Descripción',
                   ),
                   controller: _itemEditor,
                   validator: (value) => value!.isEmpty ? "Campo requerido *" : null,
                 ),
                 const SizedBox(height: 9),
                 DropdownButtonFormField<String>(
-                  value: _personEditor.text.isNotEmpty ? _personEditor.text : null,
+                  value: _selectedPerson,
                   decoration: const InputDecoration(
                     icon: Icon(Icons.person_outline),
-                    hintText: 'Gasto realizado por',
-                    labelText: 'Gasto realizado por',
+                    hintText: 'Realizado por',
+                    labelText: 'Realizado por',
                   ),
-                  items: _users.map((String user) {
-                    return DropdownMenuItem<String>(
-                      value: user,
-                      child: Text(user),
-                    );
-                  }).toList(),
+                  items: [
+                    DropdownMenuItem<String>(
+                      value: 'Agregar nuevo',
+                      child: Text('Agregar nuevo'),
+                    ),
+                    ..._users.map((String user) => DropdownMenuItem<String>(
+                          value: user,
+                          child: Text(user),
+                        )),
+                  ],
                   onChanged: (value) {
-                    setState(() {
-                      _personEditor.text = value ?? '';
-                    });
+                    if (value == 'Agregar nuevo') {
+                      _showAddDialog('Persona', (newValue) {
+                        setState(() {
+                          _users = [..._users, newValue];
+                          model!.setUsers(_users);
+                          _selectedPerson = newValue;
+                        });
+                      });
+                    } else {
+                      setState(() {
+                        _selectedPerson = value;
+                      });
+                    }
                   },
                   validator: (value) => value == null || value.isEmpty ? "Campo requerido *" : null,
                 ),
                 const SizedBox(height: 9),
                 DropdownButtonFormField<String>(
-                  value: _selectedCategory.isNotEmpty ? _selectedCategory : null,
+                  value: (_selectedCategory != null &&
+                          model != null &&
+                          (_isIncome ? model!.getIncomeCategories : model!.getCategories)
+                              .any((cat) => cat['name'] == _selectedCategory))
+                      ? _selectedCategory
+                      : null,
                   decoration: const InputDecoration(
                     icon: Icon(Icons.category),
-                    hintText: 'Categoría del gasto',
+                    hintText: 'Categoría',
                     labelText: 'Categoría',
                   ),
-                  items: model!.getCategories.map((category) {
-                    return DropdownMenuItem<String>(
-                      value: category['name'],
-                      child: Text(category['name']),
-                    );
-                  }).toList(),
+                  items: _isIncome
+                      ? model!.getIncomeCategories
+                          .map((category) => DropdownMenuItem<String>(
+                                value: category['name'],
+                                child: Text(category['name']),
+                              ))
+                          .toList()
+                      : model!.getCategories
+                          .map((category) => DropdownMenuItem<String>(
+                                value: category['name'],
+                                child: Text(category['name']),
+                              ))
+                          .toList(),
                   onChanged: (value) async {
                     if (value != null && value.isNotEmpty) {
-                      _selectedCategory = value;
+                      setState(() {
+                        _selectedCategory = value;
+                      });
                       await _loadRemainingBudget();
-                      setState(() {});
+                    }
+                  },
+                  validator: (value) => value == null || value.isEmpty ? "Campo requerido *" : null,
+                ),
+                const SizedBox(height: 9),
+                DropdownButtonFormField<String>(
+                  value: _selectedAccount,
+                  decoration: const InputDecoration(
+                    icon: Icon(Icons.account_balance),
+                    hintText: 'Cuenta',
+                    labelText: 'Cuenta',
+                  ),
+                  items: [
+                    DropdownMenuItem<String>(
+                      value: 'Agregar nueva',
+                      child: Text('Agregar nueva'),
+                    ),
+                    ..._accounts.map((String account) => DropdownMenuItem<String>(
+                          value: account,
+                          child: Text(account),
+                        )),
+                  ],
+                  onChanged: (value) {
+                    if (value == 'Agregar nueva') {
+                      _showAddDialog('Cuenta', (newValue) {
+                        setState(() {
+                          _accounts = [..._accounts, newValue];
+                          model!.setAccounts([...model!.getAccounts, {'name': newValue}]);
+                          _selectedAccount = newValue;
+                        });
+                      });
+                    } else {
+                      setState(() {
+                        _selectedAccount = value;
+                      });
                     }
                   },
                   validator: (value) => value == null || value.isEmpty ? "Campo requerido *" : null,
@@ -135,13 +222,13 @@ class _NewEntryPageState extends State<NewEntryPage> {
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     icon: Icon(Icons.account_balance_wallet_outlined),
-                    hintText: '¿Cuánto dinero se gastó?',
+                    hintText: _isIncome ? '¿Cuánto dinero se recibió?' : '¿Cuánto dinero se gastó?',
                     labelText: "Monto",
                     errorText: _isAmountExceeding ? 'El gasto excede el presupuesto disponible' : null,
                   ),
                   onChanged: (value) {
                     setState(() {
-                      _isAmountExceeding = (double.tryParse(value) ?? 0.0) > _remainingBudget;
+                      _isAmountExceeding = !_isIncome && (double.tryParse(value) ?? 0.0) > _remainingBudget;
                     });
                   },
                   validator: (val) {
@@ -168,7 +255,7 @@ class _NewEntryPageState extends State<NewEntryPage> {
                   validator: (value) => value!.isEmpty ? "Campo requerido *" : null,
                 ),
                 const SizedBox(height: 20),
-                if (_selectedCategory.isNotEmpty) _buildBudgetInfoCard(),
+                if (!_isIncome && _selectedCategory != null && _selectedCategory!.isNotEmpty) _buildBudgetInfoCard(),
                 const SizedBox(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -191,7 +278,7 @@ class _NewEntryPageState extends State<NewEntryPage> {
                       onPressed: () async {
                         bool saved = await saveRecordWithBudgetCheck();
                         if (saved) {
-                          widget.callback(0); // Ir a la página de log
+                          widget.callback(0);
                           Navigator.pop(context);
                         }
                       },
@@ -217,8 +304,60 @@ class _NewEntryPageState extends State<NewEntryPage> {
     );
   }
 
-  // Mostrar el calendario en un modal ajustado
-  void _showDatePicker(BuildContext context) {
+  // Método para mostrar un diálogo para agregar un nuevo elemento (Persona o Cuenta)
+  void _showAddDialog(String type, Function(String) onAdd) {
+    TextEditingController controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Agregar nueva $type'),
+          content: TextField(
+            controller: controller,
+            decoration: InputDecoration(hintText: 'Ingrese el nombre de la nueva $type'),
+          ),
+          actions: [
+            TextButton(
+              child: Text('Cancelar'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text('Agregar'),
+              onPressed: () {
+                if (controller.text.isNotEmpty) {
+                  onAdd(controller.text);
+                  Navigator.of(context).pop();
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _loadRemainingBudget() async {
+    if (_isIncome) {
+      return;
+    }
+    try {
+      String selectedMonth = DateFormat('MM').format(DateFormat('yyyy-MM-dd').parse(_dateEditor.text));
+      double budget = await model!.getBudget(_selectedCategory!, selectedMonth);
+      double totalExpenses = model!.calculateTotalExpenseForCategory(_selectedCategory!, selectedMonth);
+
+      setState(() {
+        _budgetAmount = budget;
+        _remainingBudget = budget - totalExpenses;
+        _isAmountExceeding = (double.tryParse(_amountEditor.text) ?? 0.0) > _remainingBudget;
+      });
+    } catch (e) {
+      print("Error al cargar el presupuesto: $e");
+    }
+  }
+
+  Future<void> _showDatePicker(BuildContext context) async {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -244,13 +383,13 @@ class _NewEntryPageState extends State<NewEntryPage> {
                     setState(() {
                       _dateEditor.text = DateFormat('yyyy-MM-dd').format(selectedDay);
                     });
-                    Navigator.of(context).pop(); // Cierra el modal después de seleccionar la fecha
+                    Navigator.of(context).pop();
                   },
                   calendarFormat: CalendarFormat.month,
-                  locale: 'es_ES', // Configura el idioma del calendario a español
+                  locale: 'es_ES',
                   availableCalendarFormats: const {CalendarFormat.month: 'Mensual'},
                   headerStyle: HeaderStyle(
-                    formatButtonVisible: false, // Oculta el botón de formato
+                    formatButtonVisible: false,
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -268,44 +407,29 @@ class _NewEntryPageState extends State<NewEntryPage> {
     );
   }
 
-  Future<void> _loadRemainingBudget() async {
-    try {
-      String selectedMonth = DateFormat('MM').format(DateFormat('yyyy-MM-dd').parse(_dateEditor.text));
-      double budget = await model!.getBudget(_selectedCategory, selectedMonth);
-      double totalExpenses = model!.calculateTotalExpenseForCategory(_selectedCategory, selectedMonth);
-
-      setState(() {
-        _budgetAmount = budget;
-        _remainingBudget = budget - totalExpenses;
-        _isAmountExceeding = (double.tryParse(_amountEditor.text) ?? 0.0) > _remainingBudget;
-      });
-
-      print("Presupuesto obtenido para $_selectedCategory en mes $selectedMonth: $_budgetAmount");
-      print("Gastos totales para $_selectedCategory en mes $selectedMonth: $totalExpenses");
-      print("Saldo restante para $_selectedCategory en mes $selectedMonth: $_remainingBudget");
-    } catch (e) {
-      print("Error al cargar el presupuesto: $e");
-    }
-  }
-
   Future<bool> saveRecordWithBudgetCheck() async {
     await _loadRemainingBudget();
     if (formKey.currentState!.validate()) {
       double amount = double.tryParse(_amountEditor.text) ?? 0.0;
 
-      if (amount > _remainingBudget) {
-        print("Error: El gasto excede el presupuesto disponible. Presupuesto: $_budgetAmount, Gastos: ${_budgetAmount - _remainingBudget}, Resto: $_remainingBudget");
+      if (!_isIncome && amount > _remainingBudget) {
         return false;
       }
 
       Map<String, dynamic> data = {
         "date": DateFormat('dd-MM-yyyy').format(DateFormat('yyyy-MM-dd').parse(_dateEditor.text)),
-        "person": _personEditor.text,
+        "person": _selectedPerson ?? '',
         "item": _itemEditor.text,
-        "category": _selectedCategory,
+        "category": _selectedCategory ?? '',
         "amount": _amountEditor.text,
+        "account": _selectedAccount ?? '',
+        "isIncome": _isIncome,
       };
-      model!.addExpense(data);
+      if (_isIncome) {
+        model!.addIncome(data);
+      } else {
+        model!.addExpense(data);
+      }
       return true;
     }
     return false;

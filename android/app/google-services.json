@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "317357800424",
-    "project_id": "shared-expense-manager-cb26f",
-    "storage_bucket": "shared-expense-manager-cb26f.appspot.com"
+    "project_number": "42136239303",
+    "project_id": "gastos-compartidos-272cc",
+    "storage_bucket": "gastos-compartidos-272cc.appspot.com"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:317357800424:android:fefebf6cf7c3aa5310825d",
+        "mobilesdk_app_id": "1:42136239303:android:ed3a92b346e46c9178d2e2",
         "android_client_info": {
           "package_name": "com.arawanastudios.gastos_compartidos"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyAYFHoS-VKXujvdSRZi9fqFVegaFboHxCY"
+          "current_key": "AIzaSyBXK_kae9oApMu8TVxwLPmNNBjgF6S1Lwg"
         }
       ],
       "services": {

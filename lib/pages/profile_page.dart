@@ -117,76 +117,71 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildOptions() {
-    return Padding(
+    return ListView(
       padding: const EdgeInsets.all(16.0),
-      child: GridView.count(
-        crossAxisCount: 2,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        children: [
-          _buildOptionCard(
-              context, "Crear Presupuesto", Icons.add_chart, _showCreateBudgetModal),
-          _buildOptionCard(context, "Ver Presupuesto", Icons.pie_chart,
-              _navigateToViewBudgetPage),
-          _buildOptionCard(
-              context, "Personas", Icons.person_outline, () {
+      children: [
+        _buildOptionTile(
+            context, "Crear Presupuesto", Icons.add_chart, _showCreateBudgetModal),
+        _buildOptionTile(context, "Ver Presupuesto", Icons.pie_chart,
+            _navigateToViewBudgetPage),
+        _buildOptionTile(
+            context, "Personas", Icons.person_outline, () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AddUserCat(context: context, type: 0),
+            ),
+          );
+        }),
+        _buildOptionTile(
+            context, "Categorías de Gastos", Icons.category_outlined, () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AddUserCat(context: context, type: 1),
+            ),
+          );
+        }),
+        _buildOptionTile(
+            context, "Categorías de Ingresos", Icons.monetization_on_outlined, () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AddUserCat(context: context, type: 2),
+            ),
+          );
+        }),
+        _buildOptionTile(
+            context, "Cuentas", Icons.account_balance_wallet_outlined, () {
             Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => AddUserCat(context: context, type: 0),
-              ),
+                context,
+                MaterialPageRoute(
+                    builder: (context) => AddUserCat(context: context, type: 3), // type 3 para cuentas
+                ),
             );
-          }),
-          _buildOptionCard(
-              context, "Categorías", Icons.category_outlined, () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => AddUserCat(context: context, type: 1),
-              ),
-            );
-          }),
-        ],
-      ),
+        }),
+      ],
     );
   }
 
-  Widget _buildOptionCard(
+  Widget _buildOptionTile(
       BuildContext context, String title, IconData icon, Function onTap) {
-    return GestureDetector(
-      onTap: () => onTap(),
-      child: Card(
-        elevation: 6,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.white, Colors.blue.shade50],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 50, color: Colors.deepPurpleAccent),
-              const SizedBox(height: 10),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+    return Card(
+      elevation: 6,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: ListTile(
+        leading: Icon(icon, size: 40, color: Colors.deepPurpleAccent),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
           ),
         ),
+        onTap: () => onTap(),
       ),
     );
   }
@@ -201,51 +196,115 @@ class _ProfilePageState extends State<ProfilePage> {
       builder: (BuildContext context) {
         String _selectedCategory = '';
         double _budgetAmount = 0.0;
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15.0),
+              ),
+              title: Text(
+                  'Crear Presupuesto para ${getMonthName(int.parse(_selectedMonth))}'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 16),
+                    DropdownSearch<String>(
+                      items: widget.model.getCategories
+                          .map((category) => category['name'] as String)
+                          .toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedCategory = value ?? '';
+                        });
+                      },
+                      dropdownDecoratorProps: DropDownDecoratorProps(
+                        dropdownSearchDecoration: InputDecoration(
+                          labelText: 'Seleccionar Categoría',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                      popupProps: PopupProps.dialog(
+                        showSearchBox: true,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Monto del Presupuesto',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onChanged: (value) {
+                        _budgetAmount = double.tryParse(value) ?? 0.0;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.secondary,
+                  ),
+                  child: const Text('Cancelar'),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).primaryColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                  ),
+                  child: const Text('Guardar'),
+                  onPressed: () async {
+                    if (_selectedCategory.isNotEmpty && _budgetAmount > 0) {
+                      await widget.model.setBudget(
+                          _selectedCategory, _selectedMonth, _budgetAmount);
+                      Navigator.of(context).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Presupuesto guardado correctamente'),
+                      ));
+                    }
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showCreateAccountModal() {
+    String newAccount = '';
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15.0),
           ),
-          title: Text('Crear Presupuesto para ${getMonthName(int.parse(_selectedMonth))}'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownSearch<String>(
-                  items: widget.model.getCategories
-                      .map((category) => category['name'] as String)
-                      .toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedCategory = value ?? '';
-                    });
-                  },
-                  dropdownDecoratorProps: DropDownDecoratorProps(
-                    dropdownSearchDecoration: InputDecoration(
-                      labelText: 'Seleccionar Categoría',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                  popupProps: PopupProps.dialog(
-                    showSearchBox: true,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: 'Monto del Presupuesto',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  onChanged: (value) {
-                    _budgetAmount = double.tryParse(value) ?? 0.0;
-                  },
-                ),
-              ],
+          title: const Text('Crear Cuenta'),
+          content: TextFormField(
+            decoration: InputDecoration(
+              labelText: 'Nombre de la Cuenta',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
+            onChanged: (value) {
+              newAccount = value;
+            },
           ),
           actions: <Widget>[
             TextButton(
@@ -267,11 +326,14 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               child: const Text('Guardar'),
               onPressed: () async {
-                if (_selectedCategory.isNotEmpty && _budgetAmount > 0) {
-                  await widget.model.setBudget(_selectedCategory, _selectedMonth, _budgetAmount);
+                if (newAccount.isNotEmpty) {
+                  List<Map<String, dynamic>> updatedAccounts =
+                      List.from(widget.model.getAccounts)
+                        ..add({'name': newAccount});
+                  await widget.model.setAccounts(updatedAccounts);
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Presupuesto guardado correctamente'),
+                    content: Text('Cuenta guardada correctamente'),
                   ));
                 }
               },

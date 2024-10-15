@@ -4,17 +4,24 @@ import 'package:intl/intl.dart';
 
 class ExpenseModel extends Model {
   final CollectionReference _expensesCollection = FirebaseFirestore.instance.collection('expenses');
+  final CollectionReference _incomesCollection = FirebaseFirestore.instance.collection('incomes');
   final CollectionReference _appDataCollection = FirebaseFirestore.instance.collection('app_data');
   final CollectionReference _budgetsCollection = FirebaseFirestore.instance.collection('budgets');
 
   List<Map<String, dynamic>> _expenses = [];
-  List<Map<String, dynamic>> _categories = [];
+  List<Map<String, dynamic>> _incomes = [];
+  List<Map<String, dynamic>> _categories = [];  // Categorías de gastos
+  List<Map<String, dynamic>> _incomeCategories = []; // Categorías de ingresos
+  List<Map<String, dynamic>> _accounts = []; // Cuentas
   List<String> _users = [];
   String _currentMonth = '1';  // Inicializar el mes actual como enero (1)
 
   // Getters para los datos
   List<Map<String, dynamic>> get getExpenses => _expenses;
-  List<Map<String, dynamic>> get getCategories => _categories;
+  List<Map<String, dynamic>> get getIncomes => _incomes;
+  List<Map<String, dynamic>> get getCategories => _categories;  // Obtener categorías de gastos
+  List<Map<String, dynamic>> get getIncomeCategories => _incomeCategories;  // Obtener categorías de ingresos
+  List<Map<String, dynamic>> get getAccounts => _accounts; // Obtener cuentas
   List<String> get getUsers => _users;
   String get getCurrentMonth => _currentMonth;
 
@@ -23,37 +30,52 @@ class ExpenseModel extends Model {
   }
 
   // Método para inicializar valores desde Firestore
-Future<void> setInitValues() async {
-  try {
-    await createAppDataIfNotExists();  // Crear el documento si no existe
+  Future<void> setInitValues() async {
+    try {
+      await createAppDataIfNotExists();  // Crear el documento si no existe
 
-    DocumentSnapshot snapshot = await _appDataCollection.doc('app_data').get();
-    if (snapshot.exists) {
-      _users = List<String>.from(snapshot['users'] ?? []);
-      _categories = List<Map<String, dynamic>>.from(snapshot['categories'] ?? []);
-      _currentMonth = snapshot['currentMonth'] ?? '1';
-    } else {
-      _users = [];
-      _categories = [];
-      _currentMonth = '1';
+      DocumentSnapshot snapshot = await _appDataCollection.doc('app_data').get();
+      if (snapshot.exists) {
+        _users = List<String>.from(snapshot['users'] ?? []);
+        _categories = List<Map<String, dynamic>>.from(snapshot['categories'] ?? []);  // Inicializa categorías de gastos
+        _incomeCategories = List<Map<String, dynamic>>.from(snapshot['incomeCategories'] ?? []);  // Inicializa categorías de ingresos
+        _accounts = List<Map<String, dynamic>>.from(snapshot['accounts'] ?? []);  // Inicializa cuentas
+        _currentMonth = snapshot['currentMonth'] ?? '1';
+      } else {
+        _users = [];
+        _categories = [];
+        _incomeCategories = [];
+        _accounts = [];
+        _currentMonth = '1';
+      }
+
+      QuerySnapshot expensesSnapshot = await _expensesCollection.get();
+      if (expensesSnapshot.docs.isNotEmpty) {
+        _expenses = expensesSnapshot.docs.map((e) {
+          var data = Map<String, dynamic>.from(e.data() as Map<String, dynamic>);
+          data['id'] = e.id; // Asignar el ID del documento a cada gasto
+          return data;
+        }).toList();
+      } else {
+        _expenses = [];
+      }
+
+      QuerySnapshot incomesSnapshot = await _incomesCollection.get();
+      if (incomesSnapshot.docs.isNotEmpty) {
+        _incomes = incomesSnapshot.docs.map((e) {
+          var data = Map<String, dynamic>.from(e.data() as Map<String, dynamic>);
+          data['id'] = e.id; // Asignar el ID del documento a cada ingreso
+          return data;
+        }).toList();
+      } else {
+        _incomes = [];
+      }
+
+      notifyListeners();
+    } catch (e) {
+      print("Error al inicializar valores: $e");
     }
-
-    QuerySnapshot expensesSnapshot = await _expensesCollection.get();
-    if (expensesSnapshot.docs.isNotEmpty) {
-      _expenses = expensesSnapshot.docs.map((e) {
-        var data = Map<String, dynamic>.from(e.data() as Map<String, dynamic>);
-        data['id'] = e.id; // Asignar el ID del documento a cada gasto
-        return data;
-      }).toList();
-    } else {
-      _expenses = [];
-    }
-
-    notifyListeners();
-  } catch (e) {
-    print("Error al inicializar valores: $e");
   }
-}
 
 
 void addExpense(Map<String, dynamic> newExpenseEntry) async {
@@ -98,7 +120,7 @@ void addExpense(Map<String, dynamic> newExpenseEntry) async {
   }
 }
 
-
+//Metodo para eliminar un gasto
 Future<void> deleteExpense(String expenseId) async {
   try {
     if (expenseId.isNotEmpty) {
@@ -112,6 +134,118 @@ Future<void> deleteExpense(String expenseId) async {
     }
   } catch (e) {
     print("Error al eliminar el gasto: $e");
+  }
+}
+
+  // Método para agregar un nuevo ingreso
+  void addIncome(Map<String, dynamic> newIncomeEntry) async {
+    try {
+      DocumentReference docRef = await _incomesCollection.add(newIncomeEntry);
+      String incomeId = docRef.id; // Obtener el ID generado por Firestore
+      newIncomeEntry['id'] = incomeId; // Asignar el ID al ingreso
+      _incomes.insert(0, newIncomeEntry); // Insertar en la lista con el ID asignado
+
+      print("Ingreso agregado correctamente con ID: $incomeId");
+      notifyListeners();
+    } catch (e) {
+      print("Error al agregar un nuevo ingreso: $e");
+    }
+  }
+
+    // Método para eliminar un ingreso
+  Future<void> deleteIncome(String incomeId) async {
+    try {
+      if (incomeId.isNotEmpty) {
+        await _incomesCollection.doc(incomeId).delete();
+        _incomes.removeWhere((income) => income['id'] == incomeId);
+        notifyListeners();
+        print("Ingreso eliminado correctamente con ID: $incomeId");
+      } else {
+        print("Error: No se puede eliminar un ingreso sin ID.");
+      }
+    } catch (e) {
+      print("Error al eliminar el ingreso: $e");
+    }
+  }
+
+  //Metodo para crear una cuenta
+    Future<void> setAccounts(List<Map<String, dynamic>> accountList) async {
+    try {
+      await createAppDataIfNotExists(); // Asegurarse de que `app_data` exista antes de actualizar
+
+      _accounts = accountList;
+      await _appDataCollection.doc('app_data').update({'accounts': _accounts});
+      notifyListeners();
+    } catch (e) {
+      print("Error al configurar las cuentas: $e");
+    }
+  }
+  //Metodo para eliminar una cuenta
+  Future<void> deleteAccount(String accountName) async {
+    try {
+      // Filtra las cuentas para eliminar la que coincide con el nombre proporcionado
+      _accounts.removeWhere((account) => account['name'] == accountName);
+      
+      // Actualiza el documento en Firestore con la nueva lista de cuentas
+      await _appDataCollection.doc('app_data').update({'accounts': _accounts});
+      
+      // Notificar a los oyentes que los datos han cambiado
+      notifyListeners();
+      
+      print("Cuenta eliminada correctamente: $accountName");
+    } catch (e) {
+      print("Error al eliminar la cuenta: $e");
+    }
+  }
+
+    // Método para configurar las categorías de ingresos
+  Future<void> setIncomeCategories(List<Map<String, dynamic>> categoryList) async {
+    try {
+      await createAppDataIfNotExists(); // Asegurarse de que `app_data` exista antes de actualizar
+
+      _incomeCategories = categoryList;
+      await _appDataCollection.doc('app_data').update({'incomeCategories': _incomeCategories});
+      notifyListeners();
+    } catch (e) {
+      print("Error al configurar las categorías de ingresos: $e");
+    }
+  }
+
+  // Método para calcular la participación de los ingresos por categoría con filtrado por mes
+Map<String, double> calculateIncomeCategoryShare({int? month}) {
+  Map<String, double> incomeCategoryShare = {};
+  List<Map<String, dynamic>> filteredIncomes = _filterIncomesByMonth(month);
+
+  for (var income in filteredIncomes) {
+    String category = income['category'] ?? 'Other';
+    double amount = _convertToDouble(income['amount']);
+
+    if (incomeCategoryShare.containsKey(category)) {
+      incomeCategoryShare[category] = incomeCategoryShare[category]! + amount;
+    } else {
+      incomeCategoryShare[category] = amount;
+    }
+  }
+
+  return incomeCategoryShare;
+}
+
+// Método para filtrar los ingresos por el mes especificado
+List<Map<String, dynamic>> _filterIncomesByMonth(int? month) {
+  if (month == null || month == 13) {
+    // Si no se pasa mes o se selecciona "Todos", no se filtra por mes
+    return _incomes;
+  } else {
+    // Filtra los ingresos por el mes especificado (formato dd-mm-yyyy)
+    return _incomes.where((income) {
+      final date = income['date'] ?? '';
+      final parts = date.split('-');
+      if (parts.length >= 2) {
+        final incomeMonth = int.tryParse(parts[1]);
+        return incomeMonth == month;
+      }
+      return false;
+    }).toList();
   }
 }
 
@@ -200,7 +334,7 @@ Future<void> deleteExpense(String expenseId) async {
         .fold(0.0, (sum, expense) => sum + _convertToDouble(expense['amount']));
   }
 
-  // Método para obtener el mes de una fecha en formato "dd-MM-yyyy"
+  // Método para obtener el mes de una fecha en formato "dd-MM-yyyy"  
   String _getMonthFromDateString(String date) {
     try {
       DateTime parsedDate = DateFormat('dd-MM-yyyy').parse(date);
@@ -211,18 +345,45 @@ Future<void> deleteExpense(String expenseId) async {
     }
   }
 
-  // Método para crear el documento `app_data` si no existe
-  Future<void> createAppDataIfNotExists() async {
-    DocumentSnapshot doc = await _appDataCollection.doc('app_data').get();
-    if (!doc.exists) {
-      // Crea el documento app_data sin incluir referencias a otras colecciones
-      await _appDataCollection.doc('app_data').set({
-        'users': [],
-        'categories': [],
-        'currentMonth': '1',
-      });
+// Crear el documento `app_data` si no existe
+Future<void> createAppDataIfNotExists() async {
+  DocumentSnapshot doc = await _appDataCollection.doc('app_data').get();
+  if (!doc.exists) {
+    // Si no existe el documento `app_data`, créalo con todos los campos necesarios
+    await _appDataCollection.doc('app_data').set({
+      'users': [],
+      'categories': [], // Categorías de gastos
+      'incomeCategories': [], // Categorías de ingresos
+      'accounts': [], // Categorías de ingresos
+      'currentMonth': '1',
+    });
+  } else {
+    // Si el documento ya existe, asegúrate de que todos los campos estén presentes
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    Map<String, dynamic> updates = {};
+
+    if (!data.containsKey('incomeCategories')) {
+      updates['incomeCategories'] = [];
+    }
+    if (!data.containsKey('categories')) {
+      updates['categories'] = [];
+    }
+    if (!data.containsKey('accounts')) {
+      updates['accounts'] = [];
+    }
+    if (!data.containsKey('users')) {
+      updates['users'] = [];
+    }
+    if (!data.containsKey('currentMonth')) {
+      updates['currentMonth'] = '1';
+    }
+
+    if (updates.isNotEmpty) {
+      await _appDataCollection.doc('app_data').update(updates);
     }
   }
+}
+
 
   // Método para convertir a double los valores de amount
   double _convertToDouble(dynamic value) {

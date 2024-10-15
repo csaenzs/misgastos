@@ -32,7 +32,7 @@ class _HomePageState extends State<HomePage> {
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home),
-            label: 'Gastos',
+            label: 'Inicio',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.pie_chart),
