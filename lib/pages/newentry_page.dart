@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:date_time_picker/date_time_picker.dart';
 import 'package:gastos_compartidos/scoped_model/expenseScope.dart';
 import 'package:gastos_compartidos/theme/colors.dart';
 import 'package:scoped_model/scoped_model.dart';
+import 'package:table_calendar/table_calendar.dart';
 
 class NewEntryPage extends StatefulWidget {
   final Function callback;
@@ -21,7 +21,7 @@ class _NewEntryPageState extends State<NewEntryPage> {
   TextEditingController _itemEditor = TextEditingController();
   TextEditingController _personEditor = TextEditingController();
   TextEditingController _amountEditor = TextEditingController();
-  TextEditingController _dateEditor = TextEditingController(text: DateTime.now().toString());
+  TextEditingController _dateEditor = TextEditingController(text: DateFormat('yyyy-MM-dd').format(DateTime.now()));
   TextEditingController _categoryEditor = TextEditingController();
 
   ExpenseModel? model;
@@ -123,7 +123,7 @@ class _NewEntryPageState extends State<NewEntryPage> {
                   onChanged: (value) async {
                     if (value != null && value.isNotEmpty) {
                       _selectedCategory = value;
-                      await _loadRemainingBudget(); // Asegúrate de que esta función ahora sea de tipo Future<void>
+                      await _loadRemainingBudget();
                       setState(() {});
                     }
                   },
@@ -131,20 +131,19 @@ class _NewEntryPageState extends State<NewEntryPage> {
                 ),
                 const SizedBox(height: 9),
                 TextFormField(
-                  autovalidateMode: AutovalidateMode.disabled,
-                  keyboardType: TextInputType.number,
                   controller: _amountEditor,
-                  onChanged: (value) {
-                    setState(() {
-                      _isAmountExceeding = (double.tryParse(value) ?? 0.0) > _remainingBudget;
-                    });
-                  },
+                  keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     icon: Icon(Icons.account_balance_wallet_outlined),
                     hintText: '¿Cuánto dinero se gastó?',
                     labelText: "Monto",
                     errorText: _isAmountExceeding ? 'El gasto excede el presupuesto disponible' : null,
                   ),
+                  onChanged: (value) {
+                    setState(() {
+                      _isAmountExceeding = (double.tryParse(value) ?? 0.0) > _remainingBudget;
+                    });
+                  },
                   validator: (val) {
                     if (val!.isEmpty) return "Campo requerido *";
                     if (double.tryParse(val) == null) {
@@ -157,14 +156,15 @@ class _NewEntryPageState extends State<NewEntryPage> {
                   },
                 ),
                 const SizedBox(height: 9),
-                DateTimePicker(
+                TextFormField(
                   controller: _dateEditor,
-                  type: DateTimePickerType.date,
-                  dateMask: 'd MMM, yyyy',
-                  firstDate: DateTime(2000),
-                  lastDate: DateTime(2100),
-                  icon: const Icon(Icons.event),
-                  dateLabelText: 'Fecha',
+                  readOnly: true,
+                  decoration: const InputDecoration(
+                    icon: Icon(Icons.event),
+                    hintText: 'Selecciona la fecha',
+                    labelText: 'Fecha',
+                  ),
+                  onTap: () => _showDatePicker(context),
                   validator: (value) => value!.isEmpty ? "Campo requerido *" : null,
                 ),
                 const SizedBox(height: 20),
@@ -173,40 +173,40 @@ class _NewEntryPageState extends State<NewEntryPage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                      ElevatedButton(
-                        onPressed: clearForm,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        child: const Text(
-                          "Guardar y añadir otro",
-                          style: TextStyle(fontSize: 18, color: Colors.white),
+                    ElevatedButton(
+                      onPressed: clearForm,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      ElevatedButton(
-                        onPressed: () async {
-                          bool saved = await saveRecordWithBudgetCheck();
-                          if (saved) {
-                            widget.callback(0); // Ir a la página de log
-                            Navigator.pop(context);
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        child: const Text(
-                          "Guardar",
-                          style: TextStyle(fontSize: 18, color: Colors.white),
+                      child: const Text(
+                        "Guardar y añadir otro",
+                        style: TextStyle(fontSize: 18, color: Colors.white),
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed: () async {
+                        bool saved = await saveRecordWithBudgetCheck();
+                        if (saved) {
+                          widget.callback(0); // Ir a la página de log
+                          Navigator.pop(context);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
+                      child: const Text(
+                        "Guardar",
+                        style: TextStyle(fontSize: 18, color: Colors.white),
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -217,75 +217,108 @@ class _NewEntryPageState extends State<NewEntryPage> {
     );
   }
 
-Future<void> _loadRemainingBudget() async {
-  try {
-    // Obtener el mes de la fecha seleccionada
-    String selectedMonth = DateFormat('MM').format(DateFormat('yyyy-MM-dd').parse(_dateEditor.text));
-
-    // Obtener el presupuesto asignado para la categoría seleccionada y el mes seleccionado
-    double budget = await model!.getBudget(_selectedCategory, selectedMonth);
-
-    // Calcular los gastos totales para la categoría seleccionada y el mes seleccionado
-    double totalExpenses = model!.calculateTotalExpenseForCategory(_selectedCategory, selectedMonth);
-
-    // Actualizar el estado con los valores obtenidos
-    setState(() {
-      _budgetAmount = budget;
-      _remainingBudget = budget - totalExpenses;
-      _isAmountExceeding = (double.tryParse(_amountEditor.text) ?? 0.0) > _remainingBudget;
-    });
-
-    // Imprimir los valores para verificar
-    print("Presupuesto obtenido para $_selectedCategory en mes $selectedMonth: $_budgetAmount");
-    print("Gastos totales para $_selectedCategory en mes $selectedMonth: $totalExpenses");
-    print("Saldo restante para $_selectedCategory en mes $selectedMonth: $_remainingBudget");
-  } catch (e) {
-    print("Error al cargar el presupuesto: $e");
+  // Mostrar el calendario en un modal ajustado
+  void _showDatePicker(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15.0),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Selecciona la fecha',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 20),
+                TableCalendar(
+                  firstDay: DateTime(2000),
+                  lastDay: DateTime(2100),
+                  focusedDay: DateTime.now(),
+                  onDaySelected: (selectedDay, focusedDay) {
+                    setState(() {
+                      _dateEditor.text = DateFormat('yyyy-MM-dd').format(selectedDay);
+                    });
+                    Navigator.of(context).pop(); // Cierra el modal después de seleccionar la fecha
+                  },
+                  calendarFormat: CalendarFormat.month,
+                  locale: 'es_ES', // Configura el idioma del calendario a español
+                  availableCalendarFormats: const {CalendarFormat.month: 'Mensual'},
+                  headerStyle: HeaderStyle(
+                    formatButtonVisible: false, // Oculta el botón de formato
+                  ),
+                ),
+                const SizedBox(height: 20),
+                TextButton(
+                  child: const Text('Cerrar'),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
-}
 
-Future<bool> saveRecordWithBudgetCheck() async {
-  // Primero carga el presupuesto actualizado antes de proceder
-  await _loadRemainingBudget();
+  Future<void> _loadRemainingBudget() async {
+    try {
+      String selectedMonth = DateFormat('MM').format(DateFormat('yyyy-MM-dd').parse(_dateEditor.text));
+      double budget = await model!.getBudget(_selectedCategory, selectedMonth);
+      double totalExpenses = model!.calculateTotalExpenseForCategory(_selectedCategory, selectedMonth);
 
-  // Luego procede con la validación y guarda si corresponde
-  if (formKey.currentState!.validate()) {
-    double amount = double.tryParse(_amountEditor.text) ?? 0.0;
+      setState(() {
+        _budgetAmount = budget;
+        _remainingBudget = budget - totalExpenses;
+        _isAmountExceeding = (double.tryParse(_amountEditor.text) ?? 0.0) > _remainingBudget;
+      });
 
-    // Validar si el monto excede el presupuesto disponible antes de llamar a addExpense
-    if (amount > _remainingBudget) {
-      print("Error: El gasto excede el presupuesto disponible. Presupuesto: $_budgetAmount, Gastos: ${_budgetAmount - _remainingBudget}, Resto: $_remainingBudget");
-      return false;
+      print("Presupuesto obtenido para $_selectedCategory en mes $selectedMonth: $_budgetAmount");
+      print("Gastos totales para $_selectedCategory en mes $selectedMonth: $totalExpenses");
+      print("Saldo restante para $_selectedCategory en mes $selectedMonth: $_remainingBudget");
+    } catch (e) {
+      print("Error al cargar el presupuesto: $e");
     }
-
-    // Si el monto no excede el presupuesto, guardar el registro
-    Map<String, dynamic> data = {
-      "date": DateFormat('dd-MM-yyyy').format(DateFormat('yyyy-MM-dd').parse(_dateEditor.text)),
-      "person": _personEditor.text,
-      "item": _itemEditor.text,
-      "category": _selectedCategory,
-      "amount": _amountEditor.text,
-    };
-    model!.addExpense(data); // Llamada al método de Firestore para guardar el gasto
-    return true;
   }
-  return false;
-}
 
+  Future<bool> saveRecordWithBudgetCheck() async {
+    await _loadRemainingBudget();
+    if (formKey.currentState!.validate()) {
+      double amount = double.tryParse(_amountEditor.text) ?? 0.0;
 
+      if (amount > _remainingBudget) {
+        print("Error: El gasto excede el presupuesto disponible. Presupuesto: $_budgetAmount, Gastos: ${_budgetAmount - _remainingBudget}, Resto: $_remainingBudget");
+        return false;
+      }
 
+      Map<String, dynamic> data = {
+        "date": DateFormat('dd-MM-yyyy').format(DateFormat('yyyy-MM-dd').parse(_dateEditor.text)),
+        "person": _personEditor.text,
+        "item": _itemEditor.text,
+        "category": _selectedCategory,
+        "amount": _amountEditor.text,
+      };
+      model!.addExpense(data);
+      return true;
+    }
+    return false;
+  }
 
-// Función para limpiar el formulario
-void clearForm() async {
-  // Cambia la llamada a saveRecord() por saveRecordWithBudgetCheck()
-  await saveRecordWithBudgetCheck();
-  formKey.currentState!.reset();
-  _itemEditor.clear();
-  _amountEditor.clear();
-  setState(() {});
-}
+  void clearForm() async {
+    await saveRecordWithBudgetCheck();
+    formKey.currentState!.reset();
+    _itemEditor.clear();
+    _amountEditor.clear();
+    setState(() {});
+  }
 
-  // Construir tarjeta para mostrar el presupuesto y el saldo restante
   Widget _buildBudgetInfoCard() {
     return Card(
       elevation: 5.0,
@@ -305,15 +338,15 @@ void clearForm() async {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-              Text(
-                'Presupuesto: COP ${NumberFormat('#,##0.00', 'es_CO').format(_budgetAmount)}',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Saldo Restante: COP ${NumberFormat('#,##0.00', 'es_CO').format(_remainingBudget)}',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green),
-              ),
+            Text(
+              'Presupuesto: COP ${NumberFormat('#,##0.00', 'es_CO').format(_budgetAmount)}',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Saldo Restante: COP ${NumberFormat('#,##0.00', 'es_CO').format(_remainingBudget)}',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green),
+            ),
           ],
         ),
       ),

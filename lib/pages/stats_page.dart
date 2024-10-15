@@ -28,6 +28,7 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
   late List<String> users;
   final ScreenshotController _screenShotController = ScreenshotController();
   late TabController _controller;
+  late double totalGastosInforme;
 
   bool isLoading = true; // Nueva variable para indicar si los datos están cargando
 
@@ -52,6 +53,9 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
     categoryTotals = widget.model.calculateCategoryShare(month: _controller.index + 1);
     userTotals = widget.model.calculateUserShare(month: _controller.index + 1);
     pieData = categoryTotals.isEmpty ? {"No data": 1} : categoryTotals;
+
+    // Agrega esta línea para calcular el total de los gastos
+    totalGastosInforme = categoryTotals.values.fold(0.0, (sum, value) => sum + value);
 
     // Obtener los presupuestos y calcular el saldo restante por categoría.
     categoryDetails = {};
@@ -134,13 +138,23 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      "Informes",
-                      style: TextStyle(
-                        fontSize: 21,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
+                    Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              "Total Gastos: COP ${NumberFormat('#,##0', 'es_CO').format(totalGastosInforme)}",
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                      ],
                     ),
                     SizedBox(
                       height: 18,

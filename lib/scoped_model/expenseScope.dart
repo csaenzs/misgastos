@@ -23,35 +23,38 @@ class ExpenseModel extends Model {
   }
 
   // Método para inicializar valores desde Firestore
-  Future<void> setInitValues() async {
-    try {
-      await createAppDataIfNotExists();  // Crear el documento si no existe
+Future<void> setInitValues() async {
+  try {
+    await createAppDataIfNotExists();  // Crear el documento si no existe
 
-      DocumentSnapshot snapshot = await _appDataCollection.doc('app_data').get();
-      if (snapshot.exists) {
-        _users = List<String>.from(snapshot['users'] ?? []);
-        _categories = List<Map<String, dynamic>>.from(snapshot['categories'] ?? []);
-        _currentMonth = snapshot['currentMonth'] ?? '1';
-      } else {
-        _users = [];
-        _categories = [];
-        _currentMonth = '1';
-      }
-
-      QuerySnapshot expensesSnapshot = await _expensesCollection.get();
-      if (expensesSnapshot.docs.isNotEmpty) {
-        _expenses = expensesSnapshot.docs
-            .map((e) => Map<String, dynamic>.from(e.data() as Map<String, dynamic>))
-            .toList();
-      } else {
-        _expenses = [];
-      }
-
-      notifyListeners();
-    } catch (e) {
-      print("Error al inicializar valores: $e");
+    DocumentSnapshot snapshot = await _appDataCollection.doc('app_data').get();
+    if (snapshot.exists) {
+      _users = List<String>.from(snapshot['users'] ?? []);
+      _categories = List<Map<String, dynamic>>.from(snapshot['categories'] ?? []);
+      _currentMonth = snapshot['currentMonth'] ?? '1';
+    } else {
+      _users = [];
+      _categories = [];
+      _currentMonth = '1';
     }
+
+    QuerySnapshot expensesSnapshot = await _expensesCollection.get();
+    if (expensesSnapshot.docs.isNotEmpty) {
+      _expenses = expensesSnapshot.docs.map((e) {
+        var data = Map<String, dynamic>.from(e.data() as Map<String, dynamic>);
+        data['id'] = e.id; // Asignar el ID del documento a cada gasto
+        return data;
+      }).toList();
+    } else {
+      _expenses = [];
+    }
+
+    notifyListeners();
+  } catch (e) {
+    print("Error al inicializar valores: $e");
   }
+}
+
 
 void addExpense(Map<String, dynamic> newExpenseEntry) async {
   try {
@@ -95,6 +98,22 @@ void addExpense(Map<String, dynamic> newExpenseEntry) async {
   }
 }
 
+
+Future<void> deleteExpense(String expenseId) async {
+  try {
+    if (expenseId.isNotEmpty) {
+      await _expensesCollection.doc(expenseId).delete();
+      // Actualizar la lista local eliminando el gasto
+      _expenses.removeWhere((expense) => expense['id'] == expenseId);
+      notifyListeners();
+      print("Gasto eliminado correctamente con ID: $expenseId");
+    } else {
+      print("Error: No se puede eliminar un gasto sin ID.");
+    }
+  } catch (e) {
+    print("Error al eliminar el gasto: $e");
+  }
+}
 
   // Método para establecer el presupuesto de una categoría
   Future<void> setBudget(String category, String month, double amount) async {
@@ -143,7 +162,7 @@ void addExpense(Map<String, dynamic> newExpenseEntry) async {
 
       if (snapshot.exists) {
         double amount = snapshot['amount'] is int ? (snapshot['amount'] as int).toDouble() : snapshot['amount'];
-        print("Presupuesto encontrado para $documentId: $amount");
+       // print("Presupuesto encontrado para $documentId: $amount");
         return amount;
       } else {
         print("No se encontró presupuesto para $documentId");

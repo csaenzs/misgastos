@@ -12,12 +12,12 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.arawanastudios.gastos_compartidos"
-    compileSdk = 35  // Asegúrate de tener el SDK 34 instalado para evitar problemas.
+    compileSdk = 34  // Asegúrate de tener el SDK 34 instalado para evitar problemas.
 
     defaultConfig {
         applicationId = "com.arawanastudios.gastos_compartidos"
         minSdkVersion = 21
-        targetSdkVersion = 35
+        targetSdkVersion = 34
         versionCode = 1
         versionName = "1.0"
     }
