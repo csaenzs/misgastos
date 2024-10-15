@@ -55,10 +55,13 @@ dev_dependencies:
     sdk: flutter
   flutter_launcher_icons: ^0.14.1
 
-flutter_icons:
+flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/images/budget.png"
+  adaptive_icon_background: "#ffffff"  # Puedes definir un color de fondo opcional para Android
+  adaptive_icon_foreground: "assets/images/budget.png"
+  remove_alpha_ios: true  # Elimina el canal alfa para evitar problemas en iOS
 
 flutter_lints: ^5.0.0
 
