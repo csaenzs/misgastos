@@ -10,18 +10,19 @@ class ExpenseModel extends Model {
 
   List<Map<String, dynamic>> _expenses = [];
   List<Map<String, dynamic>> _incomes = [];
-  List<Map<String, dynamic>> _categories = [];  // Categorías de gastos
-  List<Map<String, dynamic>> _incomeCategories = []; // Categorías de ingresos
-  List<Map<String, dynamic>> _accounts = []; // Cuentas
+  List<Map<String, dynamic>> _categories = [];
+  List<Map<String, dynamic>> _incomeCategories = [];
+  List<Map<String, dynamic>> _accounts = [];
   List<String> _users = [];
-  String _currentMonth = '1';  // Inicializar el mes actual como enero (1)
+  String _currentMonth = '1';
+  Map<String, Map<String, double>> _budgetCache = {};
 
-  // Getters para los datos
+  // Getters
   List<Map<String, dynamic>> get getExpenses => _expenses;
   List<Map<String, dynamic>> get getIncomes => _incomes;
-  List<Map<String, dynamic>> get getCategories => _categories;  // Obtener categorías de gastos
-  List<Map<String, dynamic>> get getIncomeCategories => _incomeCategories;  // Obtener categorías de ingresos
-  List<Map<String, dynamic>> get getAccounts => _accounts; // Obtener cuentas
+  List<Map<String, dynamic>> get getCategories => _categories;
+  List<Map<String, dynamic>> get getIncomeCategories => _incomeCategories;
+  List<Map<String, dynamic>> get getAccounts => _accounts;
   List<String> get getUsers => _users;
   String get getCurrentMonth => _currentMonth;
 
@@ -29,18 +30,27 @@ class ExpenseModel extends Model {
     setInitValues();
   }
 
-  // Método para inicializar valores desde Firestore
   Future<void> setInitValues() async {
     try {
-      await createAppDataIfNotExists();  // Crear el documento si no existe
+      await createAppDataIfNotExists();
 
-      DocumentSnapshot snapshot = await _appDataCollection.doc('app_data').get();
-      if (snapshot.exists) {
-        _users = List<String>.from(snapshot['users'] ?? []);
-        _categories = List<Map<String, dynamic>>.from(snapshot['categories'] ?? []);  // Inicializa categorías de gastos
-        _incomeCategories = List<Map<String, dynamic>>.from(snapshot['incomeCategories'] ?? []);  // Inicializa categorías de ingresos
-        _accounts = List<Map<String, dynamic>>.from(snapshot['accounts'] ?? []);  // Inicializa cuentas
-        _currentMonth = snapshot['currentMonth'] ?? '1';
+      final results = await Future.wait([
+        _appDataCollection.doc('app_data').get(),
+        _expensesCollection.get(),
+        _incomesCollection.get(),
+      ]);
+
+      final appDataSnapshot = results[0] as DocumentSnapshot;
+      final expensesSnapshot = results[1] as QuerySnapshot;
+      final incomesSnapshot = results[2] as QuerySnapshot;
+
+      if (appDataSnapshot.exists) {
+        final data = appDataSnapshot.data() as Map<String, dynamic>;
+        _users = List<String>.from(data['users'] ?? []);
+        _categories = List<Map<String, dynamic>>.from(data['categories'] ?? []);
+        _incomeCategories = List<Map<String, dynamic>>.from(data['incomeCategories'] ?? []);
+        _accounts = List<Map<String, dynamic>>.from(data['accounts'] ?? []);
+        _currentMonth = data['currentMonth'] ?? '1';
       } else {
         _users = [];
         _categories = [];
@@ -49,27 +59,17 @@ class ExpenseModel extends Model {
         _currentMonth = '1';
       }
 
-      QuerySnapshot expensesSnapshot = await _expensesCollection.get();
-      if (expensesSnapshot.docs.isNotEmpty) {
-        _expenses = expensesSnapshot.docs.map((e) {
-          var data = Map<String, dynamic>.from(e.data() as Map<String, dynamic>);
-          data['id'] = e.id; // Asignar el ID del documento a cada gasto
-          return data;
-        }).toList();
-      } else {
-        _expenses = [];
-      }
+      _expenses = expensesSnapshot.docs.map((e) {
+        var data = Map<String, dynamic>.from(e.data() as Map<String, dynamic>);
+        data['id'] = e.id;
+        return data;
+      }).toList();
 
-      QuerySnapshot incomesSnapshot = await _incomesCollection.get();
-      if (incomesSnapshot.docs.isNotEmpty) {
-        _incomes = incomesSnapshot.docs.map((e) {
-          var data = Map<String, dynamic>.from(e.data() as Map<String, dynamic>);
-          data['id'] = e.id; // Asignar el ID del documento a cada ingreso
-          return data;
-        }).toList();
-      } else {
-        _incomes = [];
-      }
+      _incomes = incomesSnapshot.docs.map((e) {
+        var data = Map<String, dynamic>.from(e.data() as Map<String, dynamic>);
+        data['id'] = e.id;
+        return data;
+      }).toList();
 
       notifyListeners();
     } catch (e) {
@@ -77,102 +77,110 @@ class ExpenseModel extends Model {
     }
   }
 
+  Future<Map<String, double>> getAllBudgetsForMonth(String month) async {
+    try {
+      month = month.padLeft(2, '0');
+      
+      if (_budgetCache.containsKey(month)) {
+        return _budgetCache[month]!;
+      }
 
-void addExpense(Map<String, dynamic> newExpenseEntry) async {
-  try {
-    String category = newExpenseEntry['category'];
-    double amount = double.tryParse(newExpenseEntry['amount']) ?? 0.0;
+      Map<String, double> budgets = {};
+      
+      QuerySnapshot snapshot = await _budgetsCollection
+          .where('month', isEqualTo: month)
+          .get();
 
-    // Verificar que el monto sea válido
-    if (amount <= 0) {
-      print("Error: El monto ingresado no es válido.");
-      return;
+      for (var doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        budgets[data['category']] = data['amount'] is int 
+            ? (data['amount'] as int).toDouble() 
+            : data['amount'];
+      }
+
+      for (var category in _categories) {
+        String categoryName = category['name'];
+        if (!budgets.containsKey(categoryName)) {
+          budgets[categoryName] = 0.0;
+        }
+      }
+
+      _budgetCache[month] = budgets;
+      
+      return budgets;
+    } catch (e) {
+      print("Error al obtener los presupuestos del mes: $e");
+      return {};
     }
-
-    // Obtener el presupuesto actual y calcular los gastos actuales
-    double budget = await getBudget(category, getCurrentMonth); // Obteniendo el presupuesto actual
-    double totalExpenses = calculateTotalExpenseForCategory(category, getCurrentMonth); // Calculando los gastos actuales
-
-    double remainingBudget = budget - totalExpenses;
-
-    // Verificar los valores de presupuesto, gastos, y saldo restante
-    print("Presupuesto para $category en mes $_currentMonth: $budget");
-    print("Gastos totales para $category en mes $_currentMonth: $totalExpenses");
-    print("Saldo restante para $category en mes $_currentMonth: $remainingBudget");
-
-    // Realizar la validación de presupuesto con valores actualizados
-    if (amount > remainingBudget) {
-      print("Error: El gasto excede el presupuesto disponible. Presupuesto: $budget, Gastos: $totalExpenses, Resto: $remainingBudget");
-      return;
-    }
-
-    // Si el gasto no excede el presupuesto, entonces agrega el gasto
-    DocumentReference docRef = await _expensesCollection.add(newExpenseEntry);
-    String expenseId = docRef.id; // Obtener el ID generado por Firestore
-    newExpenseEntry['id'] = expenseId; // Asignar el ID al gasto
-    _expenses.insert(0, newExpenseEntry); // Insertar en la lista con el ID asignado
-
-    print("Gasto agregado correctamente con ID: $expenseId");
-
-    notifyListeners();
-  } catch (e) {
-    print("Error al agregar un nuevo gasto: $e");
   }
-}
 
-//Metodo para eliminar un gasto
-Future<void> deleteExpense(String expenseId) async {
-  try {
-    if (expenseId.isNotEmpty) {
-      await _expensesCollection.doc(expenseId).delete();
-      // Actualizar la lista local eliminando el gasto
-      _expenses.removeWhere((expense) => expense['id'] == expenseId);
+  void addExpense(Map<String, dynamic> newExpenseEntry) async {
+    try {
+      String category = newExpenseEntry['category'];
+      double amount = double.tryParse(newExpenseEntry['amount']) ?? 0.0;
+
+      if (amount <= 0) {
+        print("Error: El monto ingresado no es válido.");
+        return;
+      }
+
+      double budget = await getBudget(category, _currentMonth);
+      double totalExpenses = calculateTotalExpenseForCategory(category, _currentMonth);
+      double remainingBudget = budget - totalExpenses;
+
+      if (amount > remainingBudget) {
+        print("Error: El gasto excede el presupuesto disponible.");
+        return;
+      }
+
+      DocumentReference docRef = await _expensesCollection.add(newExpenseEntry);
+      newExpenseEntry['id'] = docRef.id;
+      _expenses.insert(0, newExpenseEntry);
+
       notifyListeners();
-      print("Gasto eliminado correctamente con ID: $expenseId");
-    } else {
-      print("Error: No se puede eliminar un gasto sin ID.");
+    } catch (e) {
+      print("Error al agregar un nuevo gasto: $e");
     }
-  } catch (e) {
-    print("Error al eliminar el gasto: $e");
   }
-}
 
-  // Método para agregar un nuevo ingreso
+  Future<void> deleteExpense(String expenseId) async {
+    try {
+      if (expenseId.isNotEmpty) {
+        await _expensesCollection.doc(expenseId).delete();
+        _expenses.removeWhere((expense) => expense['id'] == expenseId);
+        notifyListeners();
+      }
+    } catch (e) {
+      print("Error al eliminar el gasto: $e");
+    }
+  }
+
   void addIncome(Map<String, dynamic> newIncomeEntry) async {
     try {
       DocumentReference docRef = await _incomesCollection.add(newIncomeEntry);
-      String incomeId = docRef.id; // Obtener el ID generado por Firestore
-      newIncomeEntry['id'] = incomeId; // Asignar el ID al ingreso
-      _incomes.insert(0, newIncomeEntry); // Insertar en la lista con el ID asignado
-
-      print("Ingreso agregado correctamente con ID: $incomeId");
+      newIncomeEntry['id'] = docRef.id;
+      _incomes.insert(0, newIncomeEntry);
       notifyListeners();
     } catch (e) {
       print("Error al agregar un nuevo ingreso: $e");
     }
   }
 
-    // Método para eliminar un ingreso
   Future<void> deleteIncome(String incomeId) async {
     try {
       if (incomeId.isNotEmpty) {
         await _incomesCollection.doc(incomeId).delete();
         _incomes.removeWhere((income) => income['id'] == incomeId);
         notifyListeners();
-        print("Ingreso eliminado correctamente con ID: $incomeId");
-      } else {
-        print("Error: No se puede eliminar un ingreso sin ID.");
       }
     } catch (e) {
       print("Error al eliminar el ingreso: $e");
     }
   }
 
-  //Metodo para crear una cuenta
-    Future<void> setAccounts(List<Map<String, dynamic>> accountList) async {
+  Future<void> setAccounts(List<Map<String, dynamic>> accountList) async {
     try {
-      await createAppDataIfNotExists(); // Asegurarse de que `app_data` exista antes de actualizar
-
+      await createAppDataIfNotExists();
       _accounts = accountList;
       await _appDataCollection.doc('app_data').update({'accounts': _accounts});
       notifyListeners();
@@ -180,29 +188,20 @@ Future<void> deleteExpense(String expenseId) async {
       print("Error al configurar las cuentas: $e");
     }
   }
-  //Metodo para eliminar una cuenta
+
   Future<void> deleteAccount(String accountName) async {
     try {
-      // Filtra las cuentas para eliminar la que coincide con el nombre proporcionado
       _accounts.removeWhere((account) => account['name'] == accountName);
-      
-      // Actualiza el documento en Firestore con la nueva lista de cuentas
       await _appDataCollection.doc('app_data').update({'accounts': _accounts});
-      
-      // Notificar a los oyentes que los datos han cambiado
       notifyListeners();
-      
-      print("Cuenta eliminada correctamente: $accountName");
     } catch (e) {
       print("Error al eliminar la cuenta: $e");
     }
   }
 
-    // Método para configurar las categorías de ingresos
   Future<void> setIncomeCategories(List<Map<String, dynamic>> categoryList) async {
     try {
-      await createAppDataIfNotExists(); // Asegurarse de que `app_data` exista antes de actualizar
-
+      await createAppDataIfNotExists();
       _incomeCategories = categoryList;
       await _appDataCollection.doc('app_data').update({'incomeCategories': _incomeCategories});
       notifyListeners();
@@ -211,32 +210,28 @@ Future<void> deleteExpense(String expenseId) async {
     }
   }
 
-  // Método para calcular la participación de los ingresos por categoría con filtrado por mes
-Map<String, double> calculateIncomeCategoryShare({int? month}) {
-  Map<String, double> incomeCategoryShare = {};
-  List<Map<String, dynamic>> filteredIncomes = _filterIncomesByMonth(month);
+  Map<String, double> calculateIncomeCategoryShare({int? month}) {
+    Map<String, double> incomeCategoryShare = {};
+    List<Map<String, dynamic>> filteredIncomes = _filterIncomesByMonth(month);
 
-  for (var income in filteredIncomes) {
-    String category = income['category'] ?? 'Other';
-    double amount = _convertToDouble(income['amount']);
+    for (var income in filteredIncomes) {
+      String category = income['category'] ?? 'Other';
+      double amount = _convertToDouble(income['amount']);
 
-    if (incomeCategoryShare.containsKey(category)) {
-      incomeCategoryShare[category] = incomeCategoryShare[category]! + amount;
-    } else {
-      incomeCategoryShare[category] = amount;
+      if (incomeCategoryShare.containsKey(category)) {
+        incomeCategoryShare[category] = incomeCategoryShare[category]! + amount;
+      } else {
+        incomeCategoryShare[category] = amount;
+      }
     }
+
+    return incomeCategoryShare;
   }
 
-  return incomeCategoryShare;
-}
-
-// Método para filtrar los ingresos por el mes especificado
-List<Map<String, dynamic>> _filterIncomesByMonth(int? month) {
-  if (month == null || month == 13) {
-    // Si no se pasa mes o se selecciona "Todos", no se filtra por mes
-    return _incomes;
-  } else {
-    // Filtra los ingresos por el mes especificado (formato dd-mm-yyyy)
+  List<Map<String, dynamic>> _filterIncomesByMonth(int? month) {
+    if (month == null || month == 13) {
+      return _incomes;
+    }
     return _incomes.where((income) {
       final date = income['date'] ?? '';
       final parts = date.split('-');
@@ -247,86 +242,67 @@ List<Map<String, dynamic>> _filterIncomesByMonth(int? month) {
       return false;
     }).toList();
   }
-}
 
-  // Método para establecer el presupuesto de una categoría
   Future<void> setBudget(String category, String month, double amount) async {
     try {
-      // Definir el ID del documento de presupuesto correctamente formateado
+      month = month.padLeft(2, '0');
       String documentId = '$category-$month';
 
-      // Utilizar la referencia correcta a la colección budgets
       await _budgetsCollection.doc(documentId).set({
         'category': category,
         'month': month,
         'amount': amount,
       });
 
-      print("Presupuesto guardado: $category-$month -> $amount");
+      if (_budgetCache.containsKey(month)) {
+        _budgetCache[month]![category] = amount;
+      }
+
       notifyListeners();
     } catch (e) {
       print("Error al establecer el presupuesto: $e");
-    }
-  }
-
-    Future<List<String>> getMonthsWithBudgets() async {
-    try {
-      QuerySnapshot snapshot = await _budgetsCollection.get();
-      Set<String> months = {};
-
-      for (var document in snapshot.docs) {
-        String month = document['month'];
-        months.add(month);
-      }
-
-      return months.toList()..sort((a, b) => int.parse(a).compareTo(int.parse(b)));
-    } catch (e) {
-      print("Error al obtener los meses con presupuestos: $e");
-      return [];
+      throw e;
     }
   }
 
   Future<double> getBudget(String category, String month) async {
     try {
-      String formattedMonth = month.padLeft(2, '0'); // Asegúrate de que el mes sea siempre de dos dígitos
-      String documentId = '$category-$formattedMonth';
+      month = month.padLeft(2, '0');
 
-      // Consulta el presupuesto correspondiente
+      if (_budgetCache.containsKey(month) && _budgetCache[month]!.containsKey(category)) {
+        return _budgetCache[month]![category] ?? 0.0;
+      }
+
+      String documentId = '$category-$month';
       DocumentSnapshot snapshot = await _budgetsCollection.doc(documentId).get();
 
       if (snapshot.exists) {
-        double amount = snapshot['amount'] is int ? (snapshot['amount'] as int).toDouble() : snapshot['amount'];
-       // print("Presupuesto encontrado para $documentId: $amount");
+        double amount = snapshot['amount'] is int 
+            ? (snapshot['amount'] as int).toDouble() 
+            : snapshot['amount'];
+        
+        if (!_budgetCache.containsKey(month)) {
+          _budgetCache[month] = {};
+        }
+        _budgetCache[month]![category] = amount;
+        
         return amount;
-      } else {
-        print("No se encontró presupuesto para $documentId");
-        return 0.0; // Si no hay presupuesto, devolver 0
       }
+      return 0.0;
     } catch (e) {
       print("Error al obtener el presupuesto: $e");
       return 0.0;
     }
   }
 
-  // Método para obtener el presupuesto restante de una categoría en un mes
   Future<double> getRemainingBudget(String category, String month) async {
     double budget = await getBudget(category, month);
-    double totalExpenses = _expenses
-        .where((expense) =>
-            expense['category'] == category &&
-            _getMonthFromDateString(expense['date']) == month)
-        .fold(0.0, (sum, expense) => sum + _convertToDouble(expense['amount']));
-    double remaining = budget - totalExpenses;
-    print("Presupuesto obtenido para $category: $budget");
-    print("Gastos totales para $category: $totalExpenses");
-    print("Saldo restante para $category: $remaining");
-    return remaining;
+    double totalExpenses = calculateTotalExpenseForCategory(category, month);
+    return budget - totalExpenses;
   }
 
-  // Método para calcular el total de los gastos para una categoría y un mes específico
   double calculateTotalExpenseForCategory(String category, String month) {
-    String formattedMonth = month.padLeft(2, '0'); // Asegúrate de que el mes tenga siempre dos dígitos
-
+    String formattedMonth = month.padLeft(2, '0');
     return _expenses
         .where((expense) =>
             expense['category'] == category &&
@@ -334,87 +310,64 @@ List<Map<String, dynamic>> _filterIncomesByMonth(int? month) {
         .fold(0.0, (sum, expense) => sum + _convertToDouble(expense['amount']));
   }
 
-  // Método para obtener el mes de una fecha en formato "dd-MM-yyyy"  
   String _getMonthFromDateString(String date) {
     try {
       DateTime parsedDate = DateFormat('dd-MM-yyyy').parse(date);
-      return parsedDate.month.toString();
+      return parsedDate.month.toString().padLeft(2, '0');
     } catch (e) {
       print("Error al parsear la fecha: $e");
       return '';
     }
   }
 
-// Crear el documento `app_data` si no existe
-Future<void> createAppDataIfNotExists() async {
-  DocumentSnapshot doc = await _appDataCollection.doc('app_data').get();
-  if (!doc.exists) {
-    // Si no existe el documento `app_data`, créalo con todos los campos necesarios
-    await _appDataCollection.doc('app_data').set({
-      'users': [],
-      'categories': [], // Categorías de gastos
-      'incomeCategories': [], // Categorías de ingresos
-      'accounts': [], // Categorías de ingresos
-      'currentMonth': '1',
-    });
-  } else {
-    // Si el documento ya existe, asegúrate de que todos los campos estén presentes
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-    Map<String, dynamic> updates = {};
+  Future<void> createAppDataIfNotExists() async {
+    DocumentSnapshot doc = await _appDataCollection.doc('app_data').get();
+    if (!doc.exists) {
+      await _appDataCollection.doc('app_data').set({
+        'users': [],
+        'categories': [],
+        'incomeCategories': [],
+        'accounts': [],
+        'currentMonth': '1',
+      });
+    } else {
+      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+      Map<String, dynamic> updates = {};
 
-    if (!data.containsKey('incomeCategories')) {
-      updates['incomeCategories'] = [];
-    }
-    if (!data.containsKey('categories')) {
-      updates['categories'] = [];
-    }
-    if (!data.containsKey('accounts')) {
-      updates['accounts'] = [];
-    }
-    if (!data.containsKey('users')) {
-      updates['users'] = [];
-    }
-    if (!data.containsKey('currentMonth')) {
-      updates['currentMonth'] = '1';
-    }
+      if (!data.containsKey('incomeCategories')) updates['incomeCategories'] = [];
+      if (!data.containsKey('categories')) updates['categories'] = [];
+      if (!data.containsKey('accounts')) updates['accounts'] = [];
+      if (!data.containsKey('users')) updates['users'] = [];
+      if (!data.containsKey('currentMonth')) updates['currentMonth'] = '1';
 
-    if (updates.isNotEmpty) {
-      await _appDataCollection.doc('app_data').update(updates);
+      if (updates.isNotEmpty) {
+        await _appDataCollection.doc('app_data').update(updates);
+      }
     }
   }
-}
 
-
-  // Método para convertir a double los valores de amount
   double _convertToDouble(dynamic value) {
     try {
-      if (value is String) {
-        return double.tryParse(value) ?? 0.0;
-      } else if (value is int) {
-        return value.toDouble();
-      } else if (value is double) {
-        return value;
-      } else {
-        return 0.0; // Valor predeterminado para datos no numéricos
-      }
+      if (value is String) return double.tryParse(value) ?? 0.0;
+      if (value is int) return value.toDouble();
+      if (value is double) return value;
+      return 0.0;
     } catch (e) {
       print("Error al convertir a double: $e");
       return 0.0;
     }
   }
 
-  // Método para establecer el mes actual
   void setCurrentMonth(String month) async {
-    _currentMonth = month.padLeft(2, '0'); // Asegúrate de que siempre sea de dos dígitos
+    _currentMonth = month.padLeft(2, '0');
+    _budgetCache.clear();
     await _appDataCollection.doc('app_data').update({'currentMonth': _currentMonth});
     notifyListeners();
   }
 
-  // Método para configurar la lista de Personas
   Future<void> setUsers(List<String> userList) async {
     try {
-      await createAppDataIfNotExists(); // Asegurarse de que `app_data` exista antes de actualizar
-
+      await createAppDataIfNotExists();
       _users = userList;
       await _appDataCollection.doc('app_data').update({'users': _users});
       notifyListeners();
@@ -423,11 +376,9 @@ Future<void> createAppDataIfNotExists() async {
     }
   }
 
-  // Método para configurar la lista de categorías
   Future<void> setCategories(List<Map<String, dynamic>> categoryList) async {
     try {
-      await createAppDataIfNotExists(); // Asegurarse de que `app_data` exista antes de actualizar
-
+      await createAppDataIfNotExists();
       _categories = categoryList;
       await _appDataCollection.doc('app_data').update({'categories': _categories});
       notifyListeners();
@@ -436,12 +387,10 @@ Future<void> createAppDataIfNotExists() async {
     }
   }
 
-  // Método para obtener el snapshot de `app_data`
   Future<DocumentSnapshot> getAppDataSnapshot() async {
     return await _appDataCollection.doc('app_data').get();
   }
 
-  // Método para obtener todos los presupuestos para un mes específico
   Future<List<Map<String, dynamic>>> getBudgetsForMonth(String month) async {
     try {
       QuerySnapshot snapshot = await _budgetsCollection.where('month', isEqualTo: month).get();
@@ -452,8 +401,7 @@ Future<void> createAppDataIfNotExists() async {
     }
   }
 
-  // Método para calcular la participación de los gastos por categoría con filtrado por mes
-  Map<String, double> calculateCategoryShare({int? month}) {
+Map<String, double> calculateCategoryShare({int? month}) {
     Map<String, double> categoryShare = {};
     List<Map<String, dynamic>> filteredExpenses = _filterExpensesByMonth(month);
 
@@ -471,13 +419,12 @@ Future<void> createAppDataIfNotExists() async {
     return categoryShare;
   }
 
-  // Método para calcular la participación de los gastos por Persona con filtrado por mes
   Map<String, double> calculateUserShare({int? month}) {
     Map<String, double> userShare = {};
     List<Map<String, dynamic>> filteredExpenses = _filterExpensesByMonth(month);
 
     for (var user in _users) {
-      userShare[user] = 0.0;  // Inicializar el valor del Persona en 0.0
+      userShare[user] = 0.0;
     }
 
     for (var expense in filteredExpenses) {
@@ -492,22 +439,36 @@ Future<void> createAppDataIfNotExists() async {
     return userShare;
   }
 
-  // Método para filtrar los gastos por el mes especificado
   List<Map<String, dynamic>> _filterExpensesByMonth(int? month) {
     if (month == null || month == 13) {
-      // Si no se pasa mes o se selecciona "Todos", no se filtra por mes
       return _expenses;
-    } else {
-      // Filtra los gastos por el mes especificado (formato dd-mm-yyyy)
-      return _expenses.where((expense) {
-        final date = expense['date'] ?? '';
-        final parts = date.split('-');
-        if (parts.length >= 2) {
-          final expenseMonth = int.tryParse(parts[1]);
-          return expenseMonth == month;
-        }
-        return false;
-      }).toList();
+    }
+
+    return _expenses.where((expense) {
+      final date = expense['date'] ?? '';
+      final parts = date.split('-');
+      if (parts.length >= 2) {
+        final expenseMonth = int.tryParse(parts[1]);
+        return expenseMonth == month;
+      }
+      return false;
+    }).toList();
+  }
+
+  Future<List<String>> getMonthsWithBudgets() async {
+    try {
+      QuerySnapshot snapshot = await _budgetsCollection.get();
+      Set<String> months = {};
+
+      for (var document in snapshot.docs) {
+        String month = document['month'];
+        months.add(month);
+      }
+
+      return months.toList()..sort((a, b) => int.parse(a).compareTo(int.parse(b)));
+    } catch (e) {
+      print("Error al obtener los meses con presupuestos: $e");
+      return [];
     }
   }
 }
