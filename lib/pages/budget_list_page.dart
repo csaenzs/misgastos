@@ -57,6 +57,10 @@ class _BudgetListPageState extends State<BudgetListPage> {
     }
   }
 
+  double _calculateTotalBudget() {
+    return _currentBudgets.values.fold(0, (sum, amount) => sum + amount);
+  }
+
   void _showBudgetEditModal(String category, double currentBudget) {
     double amount = 0.0;
     bool isAdding = true;
@@ -237,7 +241,9 @@ class _BudgetListPageState extends State<BudgetListPage> {
     );
   }
 
-  Widget _buildHeader() {
+Widget _buildHeader() {
+    double totalBudget = _calculateTotalBudget();
+    
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -254,35 +260,60 @@ class _BudgetListPageState extends State<BudgetListPage> {
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
+      padding: const EdgeInsets.fromLTRB(8, 40, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               IconButton(
                 icon: const Icon(Icons.arrow_back, color: Colors.white),
                 onPressed: () => Navigator.pop(context),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
               ),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   "Presupuestos ${getMonthName(int.parse(widget.currentMonth))}",
                   style: const TextStyle(
-                    fontSize: 24,
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text(
+                    "Presupuesto Total",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white70,
+                    ),
+                  ),
+                  Text(
+                    "\$ ${_currencyFormat.format(totalBudget)}",
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          const Text(
-            "Toca una categoría para modificar su presupuesto",
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.white70,
+          const Padding(
+            padding: EdgeInsets.only(left: 8, top: 4),
+            child: Text(
+              "Toca una categoría para modificar su presupuesto",
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white70,
+              ),
             ),
           ),
         ],
