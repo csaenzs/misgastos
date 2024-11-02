@@ -114,6 +114,82 @@ class ExpenseModel extends Model {
     }
   }
 
+    // Agregar estos métodos en la clase ExpenseModel
+
+Future<List<Map<String, dynamic>>> getLatestRecords({
+    required bool isIncome,
+    required String month,
+    int limit = 20,
+    DocumentSnapshot? lastDocument,
+  }) async {
+    try {
+      Query query = isIncome ? _incomesCollection : _expensesCollection;
+      
+      // No aplicamos orderBy en la consulta
+      if (lastDocument != null) {
+        query = query.startAfterDocument(lastDocument);
+      }
+
+      query = query.limit(50); // Incrementamos el límite para tener más registros para ordenar
+
+      QuerySnapshot snapshot = await query.get();
+      
+      List<Map<String, dynamic>> records = snapshot.docs.map((doc) {
+        var data = Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+
+      // Ordenar los registros por fecha correctamente
+      records.sort((a, b) {
+        // Convertir las fechas de string a DateTime para comparación correcta
+        DateTime dateA = _parseDate(a['date']);
+        DateTime dateB = _parseDate(b['date']);
+        return dateB.compareTo(dateA); // Orden descendente (más reciente primero)
+      });
+
+      // Limitar a la cantidad solicitada después de ordenar
+      return records.take(limit).toList();
+    } catch (e) {
+      print("Error al obtener registros: $e");
+      return [];
+    }
+  }
+
+  DateTime _parseDate(String dateStr) {
+    try {
+      // Convertir fecha del formato "dd-MM-yyyy" a DateTime
+      List<String> parts = dateStr.split('-');
+      if (parts.length == 3) {
+        int day = int.parse(parts[0]);
+        int month = int.parse(parts[1]);
+        int year = int.parse(parts[2]);
+        return DateTime(year, month, day);
+      }
+      return DateTime.now(); // Fecha por defecto si hay error
+    } catch (e) {
+      print("Error parsing date: $e");
+      return DateTime.now();
+    }
+  }
+
+    // Método para obtener el último documento para paginación
+Future<DocumentSnapshot?> getLastDocument(List<Map<String, dynamic>> records, bool isIncome) async {
+    if (records.isEmpty) return null;
+    
+    // Ordenar los records por fecha para asegurar que obtenemos el último correcto
+    records.sort((a, b) {
+      DateTime dateA = _parseDate(a['date']);
+      DateTime dateB = _parseDate(b['date']);
+      return dateB.compareTo(dateA);
+    });
+    
+    String lastId = records.last['id'];
+    CollectionReference collection = isIncome ? _incomesCollection : _expensesCollection;
+    
+    return await collection.doc(lastId).get();
+  }
+
   void addExpense(Map<String, dynamic> newExpenseEntry) async {
     try {
       String category = newExpenseEntry['category'];

@@ -5,6 +5,7 @@ import 'package:animations/animations.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:gastos_compartidos/pages/newentry_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class DailyPage extends StatefulWidget {
   final ExpenseModel model;
@@ -19,10 +20,13 @@ class DailyPage extends StatefulWidget {
 class _DailyPageState extends State<DailyPage> {
   DateTime? _selectedDate;
   String? _selectedCategory;
-  String? _selectedMonth; // Nueva variable para el mes seleccionado
-  bool _showIncomes = false; // Variable para alternar entre gastos e ingresos
+  String? _selectedMonth;
+  bool _showIncomes = false;
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _currentRecords = [];
+  DocumentSnapshot? _lastDocument;
+  bool _hasMoreRecords = true;
 
-    // Lista de meses para el selector
   final List<Map<String, dynamic>> _months = [
     {'value': 'all', 'label': 'Todos los meses'},
     {'value': '01', 'label': 'Enero'},
@@ -42,36 +46,9 @@ class _DailyPageState extends State<DailyPage> {
   @override
   void initState() {
     super.initState();
-    _selectedMonth = 'all'; // Inicializar con "Todos los meses"
-    widget.model.addListener(_onModelChange); // Escucha los cambios en el modelo
-  }
-
-    // Método para filtrar registros por mes
-  List<Map<String, dynamic>> _filterRecordsByMonth(List<Map<String, dynamic>> records) {
-    if (_selectedMonth == 'all') return records;
-    
-    return records.where((record) {
-      DateTime recordDate = DateFormat('dd-MM-yyyy').parse(record['date']);
-      return recordDate.month.toString().padLeft(2, '0') == _selectedMonth;
-    }).toList();
-  }
-
-  // Método para calcular totales filtrados
-  Map<String, double> _calculateFilteredTotals() {
-    var filteredExpenses = _filterRecordsByMonth(widget.model.getExpenses);
-    var filteredIncomes = _filterRecordsByMonth(widget.model.getIncomes);
-
-    double totalExpenses = filteredExpenses.fold(
-      0.0, (sum, item) => sum + (double.tryParse(item['amount']) ?? 0.0));
-    double totalIncomes = filteredIncomes.fold(
-      0.0, (sum, item) => sum + (double.tryParse(item['amount']) ?? 0.0));
-    double balance = totalIncomes - totalExpenses;
-
-    return {
-      'expenses': totalExpenses,
-      'incomes': totalIncomes,
-      'balance': balance,
-    };
+    _selectedMonth = 'all';
+    _loadInitialRecords();
+    widget.model.addListener(_onModelChange);
   }
 
   @override
@@ -81,324 +58,260 @@ class _DailyPageState extends State<DailyPage> {
   }
 
   void _onModelChange() {
-    setState(() {}); // Actualiza la vista automáticamente cuando el modelo cambia
+    _loadInitialRecords();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    var size = MediaQuery.of(context).size;
-    List<Map<String, dynamic>> records = _showIncomes ? widget.model.getIncomes : widget.model.getExpenses;
+  //Parte 2 - Métodos de carga de registros
 
-    // Aplicar filtro por fecha si hay una fecha seleccionada
-    if (_selectedDate != null) {
-      records = records.where((record) {
-        DateTime recordDate = DateFormat('dd-MM-yyyy').parse(record['date']);
-        return isSameDay(recordDate, _selectedDate!);
-      }).toList();
-    }
-
-    // Aplicar filtro por categoría si hay una categoría seleccionada
-    if (_selectedCategory != null && _selectedCategory != 'Todos') {
-      records = records.where((record) => record['category'] == _selectedCategory).toList();
-    }
-
-    // Ordenar los registros en orden descendente (último primero)
-    records.sort((a, b) {
-      DateTime dateA = DateFormat('dd-MM-yyyy').parse(a['date']);
-      DateTime dateB = DateFormat('dd-MM-yyyy').parse(b['date']);
-      return dateB.compareTo(dateA);
+Future<void> _loadInitialRecords() async {
+    setState(() {
+      _isLoading = true;
     });
 
-    return Scaffold(
-      body: Column(
-        children: [
-          _buildHeader(),
-          _buildBalanceView(), // Nueva vista para mostrar el balance
-          _buildToggleButtons(),
-          _buildFilterButtons(),
-          records.isEmpty
-              ? Expanded(child: _noRecordDefault(context))
-              : Expanded(
-                  child: ListView.builder(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    itemCount: records.length,
-                    itemBuilder: (context, i) => makeRecordTile(size, records[i]),
-                  ),
-                ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          // Navegar a la página para agregar un nuevo registro
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => NewEntryPage(
-                callback: widget.callback,
-                context: context,
-              ),
-            ),
-          );
-          // Actualizar los valores después de agregar un nuevo registro
-          widget.model.setInitValues();
-        },
-        child: const Icon(
-          Icons.add,
-          color: Colors.white,
+    try {
+      var records = await widget.model.getLatestRecords(
+        isIncome: _showIncomes,
+        month: _selectedMonth ?? 'all',
+        limit: 20,
+      );
+
+      if (records.isNotEmpty) {
+        _lastDocument = await widget.model.getLastDocument(records, _showIncomes);
+        // Solo establecer _hasMoreRecords como true si tenemos exactamente 20 registros
+        _hasMoreRecords = records.length == 20;
+      } else {
+        _hasMoreRecords = false;
+      }
+
+      setState(() {
+        _currentRecords = records;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print("Error loading records: $e");
+      setState(() {
+        _isLoading = false;
+        _hasMoreRecords = false;  // Asegurarse de que no se muestre el indicador en caso de error
+      });
+    }
+  }
+
+  Future<void> _loadMoreRecords() async {
+    if (!_hasMoreRecords || _isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      var newRecords = await widget.model.getLatestRecords(
+        isIncome: _showIncomes,
+        month: _selectedMonth ?? 'all',
+        limit: 20,
+        lastDocument: _lastDocument,
+      );
+
+      if (newRecords.isNotEmpty) {
+        _lastDocument = await widget.model.getLastDocument(newRecords, _showIncomes);
+        _hasMoreRecords = newRecords.length == 20;
+        
+        setState(() {
+          _currentRecords.addAll(newRecords);
+        });
+      } else {
+        _hasMoreRecords = false;
+      }
+    } catch (e) {
+      print("Error loading more records: $e");
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  List<Map<String, dynamic>> _filterRecordsByMonth(List<Map<String, dynamic>> records) {
+    if (_selectedMonth == 'all') return records;
+    
+    return records.where((record) {
+      DateTime recordDate = DateFormat('dd-MM-yyyy').parse(record['date']);
+      return recordDate.month.toString().padLeft(2, '0') == _selectedMonth;
+    }).toList();
+  }
+
+  //Parte 3 - Métodos de construcción de la UI:
+
+  Widget _buildHeader() {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFF4CAF50),
+            Color(0xFF2E7D32),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
         ),
-        backgroundColor: myColors[2][0], // Usa un color de la lista myColors
-        tooltip: 'Agregar nuevo registro',
+      ),
+      padding: const EdgeInsets.only(top: 40, bottom: 8, left: 16, right: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Text(
+            "Registros Diarios",
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          Text(
+            "Visualiza y edita tus registros diarios",
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.white70,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-Widget _buildHeader() {
-  return Container(
-    width: double.infinity,
-    decoration: const BoxDecoration(
-      gradient: LinearGradient(
-        colors: [
-          Color(0xFF4CAF50),
-          Color(0xFF2E7D32),
-        ],
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-      ),
-    ),
-    padding: const EdgeInsets.only(top: 40, bottom: 8, left: 16, right: 16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: const [
-        Text(
-          "Registros Diarios",
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        Text(
-          "Visualiza y edita tus registros diarios",
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.white70,
-          ),
-        ),
-      ],
-    ),
-  );
-}
+  Widget _buildBalanceView() {
+    var totals = _calculateFilteredTotals();
+    final Color cardColor = const Color(0xFF388E3C).withOpacity(0.3);
 
-Widget _buildBalanceView() {
-  var totals = _calculateFilteredTotals();
-  final Color cardColor = const Color(0xFF388E3C).withOpacity(0.3);
-
-  return Container(
-    decoration: const BoxDecoration(
-      gradient: LinearGradient(
-        colors: [
-          Color(0xFF2E7D32),
-          Color(0xFF2E7D32),
-        ],
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFF2E7D32),
+            Color(0xFF2E7D32),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
       ),
-    ),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Selector de mes simplificado
-        InkWell(
-          onTap: () => _showMonthPickerModal(context),
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 8.0),
-            padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-            decoration: BoxDecoration(
-              color: cardColor,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _months.firstWhere((m) => m['value'] == _selectedMonth)['label'],
-                  style: const TextStyle(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () => _showMonthPickerModal(context),
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 8.0),
+              padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+              decoration: BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _months.firstWhere((m) => m['value'] == _selectedMonth)['label'],
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const Icon(
+                    Icons.keyboard_arrow_down,
                     color: Colors.white,
-                    fontSize: 15,
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 8.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildBalanceCard(
+                    "Gastos",
+                    totals['expenses']!,
+                    Icons.arrow_downward,
+                    cardColor,
                   ),
                 ),
-                const Icon(
-                  Icons.keyboard_arrow_down,
-                  color: Colors.white,
-                  size: 20,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildBalanceCard(
+                    "Ingresos",
+                    totals['incomes']!,
+                    Icons.arrow_upward,
+                    cardColor,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildBalanceCard(
+                    "Saldo",
+                    totals['balance']!,
+                    totals['balance']! >= 0 ? Icons.arrow_upward : Icons.arrow_downward,
+                    cardColor,
+                  ),
                 ),
               ],
             ),
           ),
-        ),
-        // Tarjetas de balance
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 8.0),
-          child: Row(
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBalanceCard(String title, double amount, IconData icon, Color backgroundColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Expanded(
-                child: _buildBalanceCard(
-                  "Gastos",
-                  totals['expenses']!,
-                  Icons.arrow_downward,
-                  cardColor,
-                ),
+              Icon(
+                icon,
+                color: Colors.white,
+                size: 14,
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildBalanceCard(
-                  "Ingresos",
-                  totals['incomes']!,
-                  Icons.arrow_upward,
-                  cardColor,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildBalanceCard(
-                  "Saldo",
-                  totals['balance']!,
-                  totals['balance']! >= 0 ? Icons.arrow_upward : Icons.arrow_downward,
-                  cardColor,
+              const SizedBox(width: 4),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
                 ),
               ),
             ],
           ),
-        ),
-      ],
-    ),
-  );
-}
-
-void _showMonthPickerModal(BuildContext context) {
-  showModalBottomSheet(
-    context: context,
-    backgroundColor: Colors.transparent,
-    builder: (BuildContext context) {
-      return Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF2E7D32),
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 10),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: _months.length,
-                itemBuilder: (context, index) {
-                  final month = _months[index];
-                  final isSelected = month['value'] == _selectedMonth;
-                  return ListTile(
-                    title: Text(
-                      month['label'],
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      ),
-                    ),
-                    tileColor: isSelected ? Colors.white.withOpacity(0.1) : null,
-                    onTap: () {
-                      setState(() {
-                        _selectedMonth = month['value'];
-                      });
-                      Navigator.pop(context);
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      );
-    },
-  );
-}
-
-Widget _buildBalanceCard(String title, double amount, IconData icon, Color backgroundColor) {
-  return Container(
-    padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
-    decoration: BoxDecoration(
-      color: backgroundColor,
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              color: Colors.white,
-              size: 14,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              title,
+          const SizedBox(height: 2),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              "\$ ${NumberFormat("#,###", "es_CO").format(amount)}",
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 13,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
               ),
+              textAlign: TextAlign.center,
             ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            "\$ " + NumberFormat("#,###", "es_CO").format(amount),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
           ),
-        ),
-      ],
-    ),
-  );
-}
-
-  Widget _buildBalanceColumn(String title, double amount, Color color) {
-    return Column(
-      children: [
-        Text(
-          title,
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-        Text(
-          NumberFormat.currency(locale: 'es_CO', symbol: '').format(amount),
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildToggleButtons() {
+  //Parte 4 - Métodos de filtros y toggles
+
+Widget _buildToggleButtons() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Row(
@@ -421,6 +334,7 @@ Widget _buildBalanceCard(String title, double amount, IconData icon, Color backg
               onChanged: (value) {
                 setState(() {
                   _showIncomes = value;
+                  _loadInitialRecords();
                 });
               },
             ),
@@ -471,6 +385,86 @@ Widget _buildBalanceCard(String title, double amount, IconData icon, Color backg
     );
   }
 
+  Map<String, double> _calculateFilteredTotals() {
+    var filteredExpenses = _filterRecordsByMonth(widget.model.getExpenses);
+    var filteredIncomes = _filterRecordsByMonth(widget.model.getIncomes);
+
+    double totalExpenses = filteredExpenses.fold(
+      0.0, (sum, item) => sum + (double.tryParse(item['amount']) ?? 0.0));
+    double totalIncomes = filteredIncomes.fold(
+      0.0, (sum, item) => sum + (double.tryParse(item['amount']) ?? 0.0));
+    double balance = totalIncomes - totalExpenses;
+
+    return {
+      'expenses': totalExpenses,
+      'incomes': totalIncomes,
+      'balance': balance,
+    };
+  }
+
+  //Parte 5 - Modales de filtros
+
+  void _showMonthPickerModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF2E7D32),
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _months.length,
+                  itemBuilder: (context, index) {
+                    final month = _months[index];
+                    final isSelected = month['value'] == _selectedMonth;
+                    return ListTile(
+                      title: Text(
+                        month['label'],
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                      tileColor: isSelected ? Colors.white.withOpacity(0.1) : null,
+                      onTap: () {
+                        setState(() {
+                          _selectedMonth = month['value'];
+                        });
+                        Navigator.pop(context);
+                        _loadInitialRecords();
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _showCategoryFilterModal() {
     showModalBottomSheet(
       context: context,
@@ -517,17 +511,18 @@ Widget _buildBalanceCard(String title, double amount, IconData icon, Color backg
                     const SizedBox(height: 20),
                     ElevatedButton(
                       onPressed: () {
-                        Navigator.pop(context); // Cerrar el BottomSheet
-                        setState(() {}); // Actualizar la pantalla
+                        Navigator.pop(context);
+                        _loadInitialRecords();
                       },
                       child: const Text("Aplicar Filtro"),
                     ),
                     TextButton(
                       onPressed: () {
                         setState(() {
-                          _selectedCategory = 'Todos'; // Restablecer filtro
+                          _selectedCategory = 'Todos';
                         });
                         Navigator.pop(context);
+                        _loadInitialRecords();
                       },
                       child: const Text("Eliminar Filtro"),
                     ),
@@ -562,11 +557,13 @@ Widget _buildBalanceCard(String title, double amount, IconData icon, Color backg
                   firstDay: DateTime.utc(2000, 1, 1),
                   lastDay: DateTime.now(),
                   focusedDay: _selectedDate ?? DateTime.now(),
-                  onDaySelected: (selectedDay, _) {
+                  selectedDayPredicate: (day) => _selectedDate != null && isSameDay(day, _selectedDate!),
+                  onDaySelected: (selectedDay, focusedDay) {
                     setState(() {
                       _selectedDate = selectedDay;
                     });
-                    Navigator.of(context).pop(); // Cierra el modal después de seleccionar la fecha
+                    Navigator.pop(context);
+                    _loadInitialRecords();
                   },
                   calendarFormat: CalendarFormat.month,
                   headerStyle: const HeaderStyle(
@@ -576,17 +573,18 @@ Widget _buildBalanceCard(String title, double amount, IconData icon, Color backg
                 const SizedBox(height: 20),
                 ElevatedButton(
                   onPressed: () {
-                    Navigator.pop(context); // Cerrar el BottomSheet
-                    setState(() {}); // Actualizar la pantalla
+                    Navigator.pop(context);
+                    _loadInitialRecords();
                   },
                   child: const Text("Aplicar Filtro"),
                 ),
                 TextButton(
                   onPressed: () {
                     setState(() {
-                      _selectedDate = null; // Restablecer filtro de fecha
+                      _selectedDate = null;
                     });
                     Navigator.pop(context);
+                    _loadInitialRecords();
                   },
                   child: const Text("Eliminar Filtro"),
                 ),
@@ -595,6 +593,84 @@ Widget _buildBalanceCard(String title, double amount, IconData icon, Color backg
           ),
         );
       },
+    );
+  }
+
+//Parte 6 - Método build principal y widgets de visualización
+
+@override
+  Widget build(BuildContext context) {
+    var records = _currentRecords;
+
+    // Aplicar filtros si están activos
+    if (_selectedDate != null) {
+      records = records.where((record) {
+        DateTime recordDate = DateFormat('dd-MM-yyyy').parse(record['date']);
+        return isSameDay(recordDate, _selectedDate!);
+      }).toList();
+    }
+
+    if (_selectedCategory != null && _selectedCategory != 'Todos') {
+      records = records.where((record) => record['category'] == _selectedCategory).toList();
+    }
+
+    return Scaffold(
+      body: Column(
+        children: [
+          _buildHeader(),
+          _buildBalanceView(),
+          _buildToggleButtons(),
+          _buildFilterButtons(),
+          records.isEmpty && !_isLoading
+              ? Expanded(child: _noRecordDefault(context))
+              : Expanded(
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (ScrollNotification scrollInfo) {
+                    if (!_isLoading && 
+                        _hasMoreRecords &&
+                        scrollInfo.metrics.pixels == scrollInfo.metrics.maxScrollExtent) {
+                      _loadMoreRecords();
+                    }
+                    return true;
+                  },
+                  child: ListView.builder(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    // Modificamos el itemCount para no mostrar el indicador si no hay más registros
+                    itemCount: records.length + (_hasMoreRecords && records.length >= 20 ? 1 : 0),
+                    itemBuilder: (context, i) {
+                      if (i == records.length) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
+                      return makeRecordTile(MediaQuery.of(context).size, records[i]);
+                    },
+                  ),
+                ),
+              )
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => NewEntryPage(
+                callback: widget.callback,
+                context: context,
+              ),
+            ),
+          );
+          _loadInitialRecords();
+        },
+        child: const Icon(Icons.add, color: Colors.white),
+        backgroundColor: myColors[2][0],
+        tooltip: 'Agregar nuevo registro',
+      ),
     );
   }
 
@@ -752,7 +828,7 @@ Widget _buildBalanceCard(String title, double amount, IconData icon, Color backg
                   widget.model.deleteExpense(id);
                 }
                 Navigator.of(context).pop();
-                widget.model.setInitValues();
+                _loadInitialRecords();
               },
             ),
           ],
