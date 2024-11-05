@@ -77,7 +77,6 @@ Future<void> _loadInitialRecords() async {
 
       if (records.isNotEmpty) {
         _lastDocument = await widget.model.getLastDocument(records, _showIncomes);
-        // Solo establecer _hasMoreRecords como true si tenemos exactamente 20 registros
         _hasMoreRecords = records.length == 20;
       } else {
         _hasMoreRecords = false;
@@ -88,10 +87,9 @@ Future<void> _loadInitialRecords() async {
         _isLoading = false;
       });
     } catch (e) {
-      print("Error loading records: $e");
       setState(() {
         _isLoading = false;
-        _hasMoreRecords = false;  // Asegurarse de que no se muestre el indicador en caso de error
+        _hasMoreRecords = false;
       });
     }
   }
@@ -600,19 +598,19 @@ Widget _buildToggleButtons() {
 
 @override
   Widget build(BuildContext context) {
-    var records = _currentRecords;
-
+    var records = _currentRecords;    
     // Aplicar filtros si están activos
     if (_selectedDate != null) {
       records = records.where((record) {
         DateTime recordDate = DateFormat('dd-MM-yyyy').parse(record['date']);
         return isSameDay(recordDate, _selectedDate!);
-      }).toList();
+      }).toList();      
     }
 
     if (_selectedCategory != null && _selectedCategory != 'Todos') {
-      records = records.where((record) => record['category'] == _selectedCategory).toList();
+      records = records.where((record) => record['category'] == _selectedCategory).toList();      
     }
+     
 
     return Scaffold(
       body: Column(

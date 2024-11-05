@@ -125,33 +125,34 @@ Future<List<Map<String, dynamic>>> getLatestRecords({
     try {
       Query query = isIncome ? _incomesCollection : _expensesCollection;
       
-      // No aplicamos orderBy en la consulta
+      query = query.orderBy('date', descending: true);
+
       if (lastDocument != null) {
         query = query.startAfterDocument(lastDocument);
       }
 
-      query = query.limit(50); // Incrementamos el límite para tener más registros para ordenar
-
       QuerySnapshot snapshot = await query.get();
-      
       List<Map<String, dynamic>> records = snapshot.docs.map((doc) {
         var data = Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
         data['id'] = doc.id;
         return data;
       }).toList();
 
-      // Ordenar los registros por fecha correctamente
+      if (month != 'all') {
+        records = records.where((record) {
+          String recordMonth = record['date'].split('-')[1];
+          return recordMonth == month;
+        }).toList();
+      }
+
       records.sort((a, b) {
-        // Convertir las fechas de string a DateTime para comparación correcta
         DateTime dateA = _parseDate(a['date']);
         DateTime dateB = _parseDate(b['date']);
-        return dateB.compareTo(dateA); // Orden descendente (más reciente primero)
+        return dateB.compareTo(dateA);
       });
 
-      // Limitar a la cantidad solicitada después de ordenar
       return records.take(limit).toList();
     } catch (e) {
-      print("Error al obtener registros: $e");
       return [];
     }
   }
@@ -190,7 +191,7 @@ Future<DocumentSnapshot?> getLastDocument(List<Map<String, dynamic>> records, bo
     return await collection.doc(lastId).get();
   }
 
-  void addExpense(Map<String, dynamic> newExpenseEntry) async {
+void addExpense(Map<String, dynamic> newExpenseEntry) async {
     try {
       String category = newExpenseEntry['category'];
       double amount = double.tryParse(newExpenseEntry['amount']) ?? 0.0;
@@ -200,15 +201,12 @@ Future<DocumentSnapshot?> getLastDocument(List<Map<String, dynamic>> records, bo
         return;
       }
 
+      // Obtenemos la información del presupuesto (para tenerla actualizada)
       double budget = await getBudget(category, _currentMonth);
       double totalExpenses = calculateTotalExpenseForCategory(category, _currentMonth);
       double remainingBudget = budget - totalExpenses;
 
-      if (amount > remainingBudget) {
-        print("Error: El gasto excede el presupuesto disponible.");
-        return;
-      }
-
+      // Registramos el gasto sin importar si excede el presupuesto
       DocumentReference docRef = await _expensesCollection.add(newExpenseEntry);
       newExpenseEntry['id'] = docRef.id;
       _expenses.insert(0, newExpenseEntry);
