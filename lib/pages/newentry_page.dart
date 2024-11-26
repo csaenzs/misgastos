@@ -35,6 +35,7 @@ class _NewEntryPageState extends State<NewEntryPage> {
   // Variables relacionadas al presupuesto
   double _budgetAmount = 0.0;
   double _remainingBudget = 0.0;
+  double _currentSpentPercentage = 0.0;
   bool _isIncome = false;
 
   @override
@@ -43,6 +44,7 @@ class _NewEntryPageState extends State<NewEntryPage> {
     model = ScopedModel.of(widget.context);
     _users = model!.getUsers;
     _accounts = model!.getAccounts.map((e) => e['name'] as String).toList();
+    _amountEditor.addListener(_updateBudgetPercentage);
 
     if (widget.index != -999) {
       Map<String, dynamic> entry = _isIncome ? model!.getIncomes[widget.index] : model!.getExpenses[widget.index];
@@ -224,20 +226,11 @@ class _NewEntryPageState extends State<NewEntryPage> {
                     icon: Icon(Icons.account_balance_wallet_outlined),
                     hintText: _isIncome ? '¿Cuánto dinero se recibió?' : '¿Cuánto dinero se gastó?',
                     labelText: "Monto",
-                    errorText: _isAmountExceeding ? 'El gasto excede el presupuesto disponible' : null,
                   ),
-                  onChanged: (value) {
-                    setState(() {
-                      _isAmountExceeding = !_isIncome && (double.tryParse(value) ?? 0.0) > _remainingBudget;
-                    });
-                  },
                   validator: (val) {
                     if (val!.isEmpty) return "Campo requerido *";
                     if (double.tryParse(val) == null) {
                       return "Ingresa un número válido";
-                    }
-                    if (_isAmountExceeding) {
-                      return "El monto excede el presupuesto disponible";
                     }
                     return null;
                   },
@@ -338,24 +331,32 @@ class _NewEntryPageState extends State<NewEntryPage> {
     );
   }
 
-  Future<void> _loadRemainingBudget() async {
-    if (_isIncome) {
-      return;
-    }
-    try {
-      String selectedMonth = DateFormat('MM').format(DateFormat('yyyy-MM-dd').parse(_dateEditor.text));
-      double budget = await model!.getBudget(_selectedCategory!, selectedMonth);
-      double totalExpenses = model!.calculateTotalExpenseForCategory(_selectedCategory!, selectedMonth);
-
-      setState(() {
-        _budgetAmount = budget;
-        _remainingBudget = budget - totalExpenses;
-        _isAmountExceeding = (double.tryParse(_amountEditor.text) ?? 0.0) > _remainingBudget;
-      });
-    } catch (e) {
-      print("Error al cargar el presupuesto: $e");
-    }
+Future<void> _loadRemainingBudget() async {
+  if (_isIncome) {
+    return;
   }
+  try {
+    String selectedMonth = DateFormat('MM').format(DateFormat('yyyy-MM-dd').parse(_dateEditor.text));
+    double budget = await model!.getBudget(_selectedCategory!, selectedMonth);
+    double totalExpenses = model!.calculateTotalExpenseForCategory(_selectedCategory!, selectedMonth);
+
+    setState(() {
+      _budgetAmount = budget;
+      _remainingBudget = budget - totalExpenses;
+      // Calcular el porcentaje inicial cuando se carga el presupuesto
+      _currentSpentPercentage = (_budgetAmount - _remainingBudget) / _budgetAmount * 100;
+      
+      // Si hay un monto ingresado, actualizar el porcentaje
+      if (_amountEditor.text.isNotEmpty) {
+        double currentAmount = double.tryParse(_amountEditor.text) ?? 0.0;
+        double totalSpent = _budgetAmount - _remainingBudget + currentAmount;
+        _currentSpentPercentage = (totalSpent / _budgetAmount) * 100;
+      }
+    });
+  } catch (e) {
+    print("Error al cargar el presupuesto: $e");
+  }
+}
 
   Future<void> _showDatePicker(BuildContext context) async {
     showDialog(
@@ -410,12 +411,6 @@ class _NewEntryPageState extends State<NewEntryPage> {
   Future<bool> saveRecordWithBudgetCheck() async {
     await _loadRemainingBudget();
     if (formKey.currentState!.validate()) {
-      double amount = double.tryParse(_amountEditor.text) ?? 0.0;
-
-      if (!_isIncome && amount > _remainingBudget) {
-        return false;
-      }
-
       Map<String, dynamic> data = {
         "date": DateFormat('dd-MM-yyyy').format(DateFormat('yyyy-MM-dd').parse(_dateEditor.text)),
         "person": _selectedPerson ?? '',
@@ -443,37 +438,162 @@ class _NewEntryPageState extends State<NewEntryPage> {
     setState(() {});
   }
 
-  Widget _buildBudgetInfoCard() {
-    return Card(
-      elevation: 5.0,
-      child: Container(
-        padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: [
-            BoxShadow(
-              color: grey.withOpacity(0.1),
-              spreadRadius: 5,
-              blurRadius: 5,
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Presupuesto: COP ${NumberFormat('#,##0.00', 'es_CO').format(_budgetAmount)}',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Saldo Restante: COP ${NumberFormat('#,##0.00', 'es_CO').format(_remainingBudget)}',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green),
-            ),
-          ],
-        ),
-      ),
-    );
+  void _updateBudgetPercentage() {
+    if (_budgetAmount == 0 || _isIncome) return;
+    
+    setState(() {
+      double currentAmount = double.tryParse(_amountEditor.text) ?? 0.0;
+      double totalSpent = _budgetAmount - _remainingBudget + currentAmount;
+      _currentSpentPercentage = (totalSpent / _budgetAmount) * 100;
+    });
   }
+
+Widget _buildBudgetInfoCard() {
+  String emoji;
+  String message;
+  Color statusColor;
+  
+  // Verificar si hay presupuesto asignado
+  if (_budgetAmount <= 0) {
+    emoji = '😱';
+    message = '¡No hay presupuesto asignado!';
+    statusColor = Colors.red;
+  } else {
+    if (_currentSpentPercentage > 100) {
+      emoji = '😱';
+      message = '¡Ups! Te has pasado del presupuesto';
+      statusColor = Colors.red;
+    } else if (_currentSpentPercentage > 80) {
+      emoji = '😰';
+      message = '¡Cuidado! Estás cerca del límite';
+      statusColor = Colors.orange;
+    } else {
+      emoji = '🤑';
+      message = '¡Vas muy bien! Sigues dentro del presupuesto';
+      statusColor = Colors.green;
+    }
+  }
+
+  return Card(
+    elevation: 5.0,
+    child: Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: grey.withOpacity(0.1),
+            spreadRadius: 5,
+            blurRadius: 5,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Tu presupuesto:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  Text(
+                    'COP ${NumberFormat('#,##0.00', 'es_CO').format(_budgetAmount)}',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                  ),
+                ],
+              ),
+              Text(
+                emoji,
+                style: TextStyle(fontSize: 30),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            style: TextStyle(
+              fontSize: 14,
+              color: statusColor,
+              fontWeight: FontWeight.w500
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_budgetAmount > 0) ...[  // Solo mostrar estos widgets si hay presupuesto
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Disponible:',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    Text(
+                      'COP ${NumberFormat('#,##0.00', 'es_CO').format(_remainingBudget)}',
+                      style: TextStyle(
+                        fontSize: 18, 
+                        fontWeight: FontWeight.bold, 
+                        color: statusColor
+                      ),
+                    ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Has usado:',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    Text(
+                      '${_currentSpentPercentage.toStringAsFixed(1)}%',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: statusColor
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: LinearProgressIndicator(
+                value: _currentSpentPercentage / 100,
+                backgroundColor: Colors.grey[200],
+                valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                minHeight: 10,
+              ),
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
+}
+
+ @override
+  void dispose() {
+    _amountEditor.removeListener(_updateBudgetPercentage);
+    super.dispose();
+  }
+
 }
