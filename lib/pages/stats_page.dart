@@ -181,8 +181,21 @@ Widget getBody() {
                   child: Column(
                     children: [
                       _buildMonthSelector(),
-                      _buildExpensesCategories(),
-                      _buildIncomeCategories(),
+                      if (categoryTotals.isEmpty && incomeCategoryTotals.isEmpty)
+                        _buildNoTransactionsMessage()
+                      else
+                        Column(
+                          children: [
+                            if (categoryTotals.isEmpty)
+                              _buildNoExpensesMessage()
+                            else
+                              _buildExpensesCategories(),
+                            if (incomeCategoryTotals.isEmpty)
+                              _buildNoIncomesMessage()
+                            else
+                              _buildIncomeCategories(),
+                          ],
+                        ),
                     ],
                   ),
                 ),
@@ -191,6 +204,137 @@ Widget getBody() {
           ),
       ],
     );
+  }
+
+  Widget _buildNoTransactionsMessage() {
+    return Card(
+      margin: const EdgeInsets.all(16),
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const Text(
+              '📅',
+              style: TextStyle(fontSize: 48),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '¡No hay movimientos en ${_getCurrentMonth()}!',
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Registra tus ingresos y gastos para comenzar a ver las estadísticas de este mes',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey.shade600,
+                height: 1.4,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoExpensesMessage() {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            const Text(
+              '💰',
+              style: TextStyle(fontSize: 36),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '¡Sin gastos registrados en ${_getCurrentMonth()}!',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Registra tus gastos para mantener un mejor control de tus finanzas',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+                height: 1.3,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoIncomesMessage() {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            const Text(
+              '💸',
+              style: TextStyle(fontSize: 36),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '¡Sin ingresos registrados en ${_getCurrentMonth()}!',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Registra tus ingresos para tener un panorama completo de tus finanzas',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+                height: 1.3,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getCurrentMonth() {
+    Map<int, String> months = {
+      1: "Enero", 2: "Febrero", 3: "Marzo",
+      4: "Abril", 5: "Mayo", 6: "Junio",
+      7: "Julio", 8: "Agosto", 9: "Septiembre",
+      10: "Octubre", 11: "Noviembre", 12: "Diciembre",
+      13: "todo el año"
+    };
+    return months[_controller.index + 1] ?? "";
   }
 
   Widget _buildHeader() {
