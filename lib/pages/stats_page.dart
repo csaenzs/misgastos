@@ -41,7 +41,7 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
     _loadData();
   }
 
-void _loadData() async {
+  void _loadData() async {
     if (!mounted) return;
 
     setState(() {
@@ -51,7 +51,6 @@ void _loadData() async {
     try {
       await widget.model.setInitValues();
 
-      // Cargar datos en paralelo
       final results = await Future.wait([
         Future(() => widget.model.calculateCategoryShare(month: _controller.index + 1)),
         Future(() => widget.model.calculateIncomeCategoryShare(month: _controller.index + 1)),
@@ -65,7 +64,6 @@ void _loadData() async {
       totalIngresosInforme = incomeCategoryTotals.values.fold(0.0, (sum, value) => sum + value);
       balanceInforme = totalIngresosInforme - totalGastosInforme;
 
-      // Cargar detalles de categorías
       categoryDetails = {};
       await Future.wait(
         categoryTotals.keys.map((category) async {
@@ -95,352 +93,587 @@ void _loadData() async {
   }
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-@override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: grey.withOpacity(0.05),
       body: isLoading 
-          ? Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF4CAF50), Color(0xFF388E3C)],
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                ),
+          ? _buildLoadingState()
+          : getBody(),
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.green.shade600, Colors.green.shade800],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: const [
+                  Text(
+                    "Resumen Financiero",
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
               ),
-              child: SafeArea(
+            ),
+            Expanded(
+              child: Center(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Row(
-                        children: const [
-                          Text(
-                            "Resumen Financiero",
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: const CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 3,
                       ),
                     ),
-                    Expanded(
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              child: const CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 3,
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            Text(
-                              "Cargando información...",
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.white.withOpacity(0.9),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
+                    const SizedBox(height: 24),
+                    Text(
+                      "Cargando información...",
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white.withOpacity(0.9),
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
                 ),
               ),
-            )
-          : getBody(),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget getBody() {
-    Map<String, String> months = {
-      "1": "Ene",
-      "2": "Feb",
-      "3": "Mar",
-      "4": "Abr",
-      "5": "May",
-      "6": "Jun",
-      "7": "Jul",
-      "8": "Ago",
-      "9": "Sep",
-      "10": "Oct",
-      "11": "Nov",
-      "12": "Dic",
-      "13": "Todos"
-    };
+Widget getBody() {
+    return Column(
+      children: [
+        _buildHeader(),
+        if (widget.model.getUsers.isEmpty || widget.model.getCategories.isEmpty)
+          _buildEmptyState()
+        else
+          Expanded(
+            child: SingleChildScrollView(
+              child: Screenshot(
+                controller: _screenShotController,
+                child: Container(
+                  color: Colors.white,
+                  child: Column(
+                    children: [
+                      _buildMonthSelector(),
+                      _buildExpensesCategories(),
+                      _buildIncomeCategories(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.green.shade600, Colors.green.shade800],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "Resumen Financiero",
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.share, color: Colors.white),
+                    onPressed: _takeScreenShot,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _buildFinancialSummaryCard(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFinancialSummaryCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              _buildFinancialSummaryItem(
+                "Ingresos",
+                totalIngresosInforme,
+                Icons.arrow_upward,
+                Colors.green.shade300,
+              ),
+              Container(
+                height: 50,
+                width: 1,
+                color: Colors.white24,
+                margin: const EdgeInsets.symmetric(horizontal: 15),
+              ),
+              _buildFinancialSummaryItem(
+                "Gastos",
+                totalGastosInforme,
+                Icons.arrow_downward,
+                Colors.red.shade300,
+              ),
+            ],
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 15),
+            child: Divider(color: Colors.white24, height: 1),
+          ),
+          _buildBalanceSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFinancialSummaryItem(
+    String title,
+    double amount,
+    IconData icon,
+    Color iconColor,
+  ) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: iconColor, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.8),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              NumberFormat.currency(
+                symbol: 'COP ',
+                decimalDigits: 0,
+                locale: 'es_CO',
+              ).format(amount),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+Widget _buildBalanceSection() {
+    final isPositive = balanceInforme >= 0;
+    String emoji;
+    String message;
+    Color statusColor;
+
+    if (isPositive) {
+      if (balanceInforme > totalGastosInforme * 0.5) {
+        emoji = '🤑';
+        message = '¡Excelente! Estás ahorrando mucho';
+        statusColor = Colors.green.shade300;
+      } else {
+        emoji = '😊';
+        message = '¡Bien! Tu balance es positivo';
+        statusColor = Colors.green.shade300;
+      }
+    } else {
+      if (balanceInforme.abs() > totalIngresosInforme * 0.5) {
+        emoji = '😱';
+        message = '¡Cuidado! Tus gastos superan bastante tus ingresos';
+        statusColor = Colors.orange;
+      } else {
+        emoji = '😰';
+        message = '¡Atención! Tus gastos superan tus ingresos';
+        statusColor = Colors.orange;
+      }
+    }
 
     return Column(
       children: [
-Container(
-    decoration: const BoxDecoration(
-      gradient: LinearGradient(
-        colors: [Color(0xFF4CAF50), Color(0xFF388E3C)],
-        begin: Alignment.bottomCenter,
-        end: Alignment.topCenter,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              emoji,
+              style: const TextStyle(fontSize: 24),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              message,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          NumberFormat.currency(
+            symbol: 'COP ',
+            decimalDigits: 0,
+            locale: 'es_CO',
+          ).format(balanceInforme.abs()),
+          style: TextStyle(
+            color: statusColor,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Column(
+      children: [
+        const SizedBox(height: 30),
+        Text(
+          widget.model.getUsers.isEmpty 
+              ? "No se han agregado Personas" 
+              : "No se han agregado categorías",
+          style: const TextStyle(fontSize: 21),
+        ),
+        TextButton(
+          onPressed: () => widget.callback(2),
+          child: const Text("Ir a configuración"),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMonthSelector() {
+    Map<String, String> months = {
+      "1": "Enero", "2": "Febrero", "3": "Marzo",
+      "4": "Abril", "5": "Mayo", "6": "Junio",
+      "7": "Julio", "8": "Agosto", "9": "Septiembre",
+      "10": "Octubre", "11": "Noviembre", "12": "Diciembre",
+      "13": "Todo el año"
+    };
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 5,
+          ),
+        ],
       ),
-    ),
-    child: SafeArea(
-      bottom: false,
+      child: TabBar(
+        controller: _controller,
+        onTap: _updateMonthTab,
+        labelColor: Colors.green.shade700,
+        unselectedLabelColor: Colors.grey.shade600,
+        indicatorColor: Colors.green.shade700,
+        isScrollable: true,
+        tabs: months.values.map((month) => Tab(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              month,
+              style: const TextStyle(fontSize: 16),
+            ),
+          ),
+        )).toList(),
+      ),
+    );
+  }
+
+  Widget _buildEmptyDataMessage() {
+    return Card(
+      margin: const EdgeInsets.all(16),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const Text(
+              '📊',
+              style: TextStyle(fontSize: 48),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '¡No hay datos disponibles para este período!',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Registra tus primeros movimientos para ver las estadísticas',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpensesCategories() {
+    if (categoryDetails.isEmpty) return const SizedBox.shrink();
+    
+    return _buildCategoryCard(
+      "Gastos por Categoría",
+      categoryDetails,
+      MaterialCommunityIcons.chart_bar,
+      Colors.red.shade700,
+    );
+  }
+
+  Widget _buildIncomeCategories() {
+    if (incomeCategoryTotals.isEmpty) return const SizedBox.shrink();
+
+    return _buildCategoryCard(
+      "Ingresos por Categoría",
+      incomeCategoryTotals,
+      MaterialIcons.account_balance_wallet,
+      Colors.green.shade700,
+    );
+  }
+
+  Widget _buildCategoryCard(
+    String title,
+    Map<String, dynamic> data,
+    IconData icon,
+    Color color,
+  ) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(icon, color: color),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: data.length,
+            itemBuilder: (context, index) {
+              final entry = data.entries.elementAt(index);
+              return _buildCategoryItem(entry);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryItem(MapEntry<String, dynamic> entry) {
+    final formatCurrency = NumberFormat.currency(
+      symbol: 'COP ',
+      decimalDigits: 0,
+      locale: 'es_CO',
+    );
+
+    if (entry.value is Map<String, double>) {
+      final data = entry.value as Map<String, double>;
+      double percentUsed = 0.0;
+      String emoji;
+      String message;
+      
+      if (data['budget'] != null && data['budget']! > 0) {
+        percentUsed = (data['totalExpense']! / data['budget']! * 100);
+      }
+
+      // Determinar emoji y mensaje según el porcentaje usado
+      if (percentUsed > 100) {
+        emoji = '😱';
+        message = '¡Te has pasado del presupuesto!';
+      } else if (percentUsed > 80) {
+        emoji = '😰';
+        message = '¡Cuidado! Estás cerca del límite';
+      } else if (percentUsed > 50) {
+        emoji = '😊';
+        message = 'Vas bien, pero mantén el control';
+      } else {
+        emoji = '🤑';
+        message = '¡Excelente manejo del presupuesto!';
+      }
+      
+      return Padding(
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  "Resumen Financiero",
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                Expanded(
+                  child: Text(
+                    entry.key,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  icon: const Icon(Icons.share, color: Colors.white, size: 22),
-                  onPressed: _takeScreenShot,
+                Row(
+                  children: [
+                    Text(
+                      emoji,
+                      style: const TextStyle(fontSize: 20),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${percentUsed.toStringAsFixed(1)}%',
+                      style: TextStyle(
+                        color: _getPercentageColor(percentUsed),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.2),
-                  width: 1,
+            const SizedBox(height: 4),
+            Text(
+              message,
+              style: TextStyle(
+                fontSize: 12,
+                color: _getPercentageColor(percentUsed),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: LinearProgressIndicator(
+                value: (percentUsed / 100).clamp(0.0, 1.0),
+                backgroundColor: Colors.grey.shade200,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  _getPercentageColor(percentUsed),
                 ),
+                minHeight: 8,
               ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.arrow_upward,
-                                    color: Colors.white.withOpacity(0.7), size: 16),
-                                const SizedBox(width: 4),
-                                Text(
-                                  "Ingresos",
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white.withOpacity(0.7),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "COP ${NumberFormat('#,##0', 'es_CO').format(totalIngresosInforme)}",
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        width: 1,
-                        height: 40,
-                        color: Colors.white.withOpacity(0.2),
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                Icon(Icons.arrow_downward,
-                                    color: Colors.white.withOpacity(0.7), size: 16),
-                                const SizedBox(width: 4),
-                                Text(
-                                  "Gastos",
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white.withOpacity(0.7),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "COP ${NumberFormat('#,##0', 'es_CO').format(totalGastosInforme)}",
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Container(
-                      height: 1,
-                      color: Colors.white.withOpacity(0.2),
-                    ),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        balanceInforme >= 0 
-                            ? Icons.account_balance_wallet 
-                            : Icons.warning,
-                        color: Colors.white,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        "Balance: COP ${NumberFormat('#,##0', 'es_CO').format(balanceInforme)}",
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Has gastado: ${formatCurrency.format(data['totalExpense'])}',
+                  style: const TextStyle(fontSize: 14),
+                ),
+                Text(
+                  'de ${formatCurrency.format(data['budget'])}',
+                  style: const TextStyle(fontSize: 14),
+                ),
+              ],
             ),
           ],
         ),
+      );
+    }
+
+    // Para ingresos
+    return ListTile(
+      leading: Text(
+        '💰',
+        style: TextStyle(fontSize: 20),
       ),
-    ),
-  ),
-        widget.model.getUsers.isEmpty || widget.model.getCategories.isEmpty
-            ? Column(
-                children: [
-                  const SizedBox(height: 30),
-                  Text(
-                    widget.model.getUsers.isEmpty ? "No se han agregado Personas" : "No se han agregado categorías",
-                    style: const TextStyle(fontSize: 21),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      widget.callback(2);
-                    },
-                    child: const Text("Ir a configuración"),
-                  ),
-                ],
-              )
-            : Expanded(
-                child: SingleChildScrollView(
-                  child: Screenshot(
-                    controller: _screenShotController,
-                    child: Container(
-                      color: Colors.white,
-                      child: Column(
-                        children: <Widget>[
-                          Column(
-                            children: [
-                              Container(
-                                decoration: const BoxDecoration(
-                                  border: Border(bottom: BorderSide(color: Colors.black38, width: 1.5)),
-                                ),
-                                child: TabBar(
-                                  controller: _controller,
-                                  onTap: _updateMonthTab,
-                                  labelColor: Colors.blue,
-                                  unselectedLabelColor: Colors.black,
-                                  isScrollable: true,
-                                  tabs: List.generate(
-                                    months.length,
-                                    (i) => Tab(
-                                      child: Text(
-                                        months.values.toList()[i],
-                                        style: const TextStyle(fontSize: 17),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const Padding(padding: EdgeInsets.all(1)),
-                              Container(
-                                child: pieData.isEmpty
-                                    ? Padding(
-                                        padding: const EdgeInsets.all(20.0),
-                                        child: Column(
-                                          children: const [
-                                            Icon(Icons.info, size: 50, color: Colors.blue),
-                                            SizedBox(height: 10),
-                                            Text(
-                                              'No hay datos disponibles para mostrar en el informe.',
-                                              style: TextStyle(fontSize: 18),
-                                              textAlign: TextAlign.center,
-                                            ),
-                                          ],
-                                        ),
-                                      )
-                                    : PieChart(
-                                        dataMap: pieData,
-                                        animationDuration: const Duration(milliseconds: 800),
-                                        chartLegendSpacing: 10,
-                                        chartRadius: MediaQuery.of(context).size.width / 2,
-                                        initialAngleInDegree: 0,
-                                        chartType: ChartType.disc,
-                                        ringStrokeWidth: 20,
-                                        legendOptions: const LegendOptions(
-                                          showLegendsInRow: false,
-                                          legendPosition: LegendPosition.right,
-                                          showLegends: true,
-                                          legendTextStyle: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        chartValuesOptions: const ChartValuesOptions(
-                                          showChartValueBackground: false,
-                                          showChartValues: true,
-                                          showChartValuesInPercentage: true,
-                                          showChartValuesOutside: false,
-                                        ),
-                                      ),
-                              ),
-                              makeStatCard("Gastos por Categoría", Colors.pink, MaterialCommunityIcons.chart_bar, categoryDetails),
-                              makeStatCard("Ingresos por Categoría", Colors.orange, MaterialIcons.account_circle, incomeCategoryTotals),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-      ],
+      title: Text(entry.key),
+      trailing: Text(
+        formatCurrency.format(entry.value),
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
+  }
+
+  Color _getPercentageColor(double percentage) {
+    if (percentage > 100) return Colors.red;
+    if (percentage > 80) return Colors.orange;
+    return Colors.green;
   }
 
   void _updateMonthTab(int v) {
@@ -453,188 +686,17 @@ Container(
   void _takeScreenShot() async {
     final imageFile = await _screenShotController.capture();
     if (imageFile != null) {
-      await ImageGallerySaver.saveImage(imageFile, name: "test_screenshot");
+      await ImageGallerySaver.saveImage(imageFile, name: "informe_financiero");
       String tempPath = (await getTemporaryDirectory()).path;
-      File file = File('$tempPath/image.jpg');
+      File file = File('$tempPath/informe_financiero.jpg');
       await file.writeAsBytes(imageFile);
-      await Share.shareXFiles([XFile(file.path)], text: 'Compartiendo archivo');
+      await Share.shareXFiles([XFile(file.path)], text: 'Informe Financiero');
     }
   }
 
-  Widget makeStatCard(String cardType, MaterialColor color, IconData icon, Map<String, dynamic> displayData) {
-    final formatCurrency = NumberFormat('#,##0', 'es_CO');
-    return Padding(
-      padding: const EdgeInsets.all(10),
-      child: Card(
-        elevation: 5.0,
-        child: Container(
-          decoration: BoxDecoration(
-            color: white,
-            borderRadius: BorderRadius.circular(10),
-            boxShadow: [
-              BoxShadow(
-                color: grey.withOpacity(0.01),
-                spreadRadius: 10,
-                blurRadius: 3,
-              ),
-            ],
-          ),
-          width: double.infinity,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 5, bottom: 5, left: 5, right: 5),
-                child: Row(
-                  children: [
-                    Icon(icon),
-                    const SizedBox(width: 10),
-                    Text(
-                      cardType,
-                      style: TextStyle(
-                        fontSize: 20,
-                        color: color.shade800,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(thickness: 3.0, height: 15),
-              Padding(
-                padding: const EdgeInsets.all(7),
-                child: Column(
-                  children: displayData.entries.map((entry) {
-                    if (entry.value is Map<String, double>) {
-                      final data = entry.value as Map<String, double>;
-                      return Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: Text(
-                                  entry.key,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  "Gasto: COP ${formatCurrency.format(data['totalExpense']!)}",
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                  textAlign: TextAlign.right,
-                                ),
-                              ),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  "Presup: COP ${formatCurrency.format(data['budget']!)}",
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                  textAlign: TextAlign.right,
-                                ),
-                              ),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  "Saldo: COP ${formatCurrency.format(data['remaining']!)}",
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                  textAlign: TextAlign.right,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Divider(thickness: 0.8, indent: 5, endIndent: 5),
-                        ],
-                      );
-                    } else {
-                      return Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                entry.key,
-                                style: const TextStyle(
-                                  fontSize: 17,
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              Text(
-                                "COP ${formatCurrency.format(entry.value)}",
-                                style: const TextStyle(
-                                  fontSize: 17,
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Divider(thickness: 0.8, indent: 5, endIndent: 5),
-                        ],
-                      );
-                    }
-                  }).toList(),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
-
-    // Agregar este método en la clase
-    Widget _buildAmountColumn(String title, double amount, IconData icon, Color iconColor) {
-      return Expanded(
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: iconColor, size: 16),
-                const SizedBox(width: 4),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    color: Colors.white70,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                "COP ${NumberFormat('#,##0', 'es_CO').format(amount)}",
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
 }
