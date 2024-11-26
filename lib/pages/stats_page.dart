@@ -30,6 +30,8 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
   late double totalGastosInforme;
   late double totalIngresosInforme;
   late double balanceInforme;
+  late Map<String, double> accountTotals = {};
+  late double _totalAnnualIncome;
 
   bool isLoading = true;
 
@@ -41,7 +43,7 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
     _loadData();
   }
 
-  void _loadData() async {
+  void _loadData() async {  
     if (!mounted) return;
 
     setState(() {
@@ -54,15 +56,26 @@ class _StatsPageState extends State<StatsPage> with SingleTickerProviderStateMix
       final results = await Future.wait([
         Future(() => widget.model.calculateCategoryShare(month: _controller.index + 1)),
         Future(() => widget.model.calculateIncomeCategoryShare(month: _controller.index + 1)),
+        Future(() => widget.model.calculateAccountTotals(month: _controller.index + 1)),
       ]);
 
       categoryTotals = results[0];
       incomeCategoryTotals = results[1];
+      accountTotals = results[2];
       pieData = categoryTotals.isEmpty ? {"No data": 1} : categoryTotals;
 
       totalGastosInforme = categoryTotals.values.fold(0.0, (sum, value) => sum + value);
       totalIngresosInforme = incomeCategoryTotals.values.fold(0.0, (sum, value) => sum + value);
       balanceInforme = totalIngresosInforme - totalGastosInforme;
+
+      // Calcular el ingreso anual total
+      if (_controller.index == 12) { // Vista anual
+        _totalAnnualIncome = widget.model.getIncomes
+            .map((income) => double.tryParse(income['amount'].toString()) ?? 0.0)
+            .fold(0.0, (sum, amount) => sum + amount);
+      } else {
+        _totalAnnualIncome = totalIngresosInforme * 12; // Estimación anual basada en el mes actual
+      }
 
       categoryDetails = {};
       await Future.wait(
@@ -388,6 +401,7 @@ Widget getBody() {
       ),
       child: Column(
         children: [
+          // Ingresos y Gastos (mantener el código existente)
           Row(
             children: [
               _buildFinancialSummaryItem(
@@ -415,8 +429,98 @@ Widget getBody() {
             child: Divider(color: Colors.white24, height: 1),
           ),
           _buildBalanceSection(),
+          if (accountTotals.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 15),
+              child: Divider(color: Colors.white24, height: 1),
+            ),
+            _buildAccountsSummary(),
+          ],
         ],
       ),
+    );
+  }
+
+    Widget _buildAccountsSummary() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            children: [
+              Icon(
+                Icons.account_balance,
+                color: Colors.white.withOpacity(0.8),
+                size: 16,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                "Movimientos por Cuenta",
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.8),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: accountTotals.entries.map((entry) {
+            final isPositive = entry.value >= 0;
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.2),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        entry.key,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        isPositive ? '💰' : '💸',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    NumberFormat.currency(
+                      symbol: 'COP ',
+                      decimalDigits: 0,
+                      locale: 'es_CO',
+                    ).format(entry.value.abs()),
+                    style: TextStyle(
+                      color: isPositive ? Colors.green.shade300 : Colors.orange.shade300,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 
@@ -622,14 +726,150 @@ Widget _buildBalanceSection() {
     );
   }
 
-  Widget _buildExpensesCategories() {
+Widget _buildExpensesCategories() {
     if (categoryDetails.isEmpty) return const SizedBox.shrink();
     
-    return _buildCategoryCard(
-      "Gastos por Categoría",
-      categoryDetails,
-      MaterialCommunityIcons.chart_bar,
-      Colors.red.shade700,
+    double expensePercentage = (totalGastosInforme / _totalAnnualIncome) * 100;
+    String emoji;
+    String mensaje;
+    Color colorResumen;
+
+    if (expensePercentage > 100) {
+      emoji = '😱';
+      mensaje = '¡Ups! Tus gastos superan tus ingresos en un ${(expensePercentage - 100).toStringAsFixed(1)}%';
+      colorResumen = Colors.red;
+    } else if (expensePercentage > 90) {
+      emoji = '😰';
+      mensaje = '¡Cuidado! Estás usando el ${expensePercentage.toStringAsFixed(1)}% de tus ingresos';
+      colorResumen = Colors.orange;
+    } else if (expensePercentage > 70) {
+      emoji = '😊';
+      mensaje = '¡Vas bien! Estás usando el ${expensePercentage.toStringAsFixed(1)}% de tus ingresos';
+      colorResumen = Colors.green;
+    } else {
+      emoji = '🤑';
+      mensaje = '¡Excelente! Solo usas el ${expensePercentage.toStringAsFixed(1)}% de tus ingresos';
+      colorResumen = Colors.green;
+    }
+
+    return Column(
+      children: [
+        if (_controller.index == 12) // Solo mostrar en vista anual
+          Card(
+            margin: const EdgeInsets.all(16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        emoji,
+                        style: TextStyle(fontSize: 24),
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Balance Anual',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    mensaje,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: colorResumen,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  _buildProgressIndicator(expensePercentage, colorResumen),
+                  SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Has recibido:',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          Text(
+                            NumberFormat.currency(
+                              symbol: 'COP ',
+                              decimalDigits: 0,
+                              locale: 'es_CO'
+                            ).format(_totalAnnualIncome),
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'Has gastado:',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          Text(
+                            NumberFormat.currency(
+                              symbol: 'COP ',
+                              decimalDigits: 0,
+                              locale: 'es_CO'
+                            ).format(totalGastosInforme),
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: colorResumen,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        _buildCategoryCard(
+          "Gastos por Categoría",
+          categoryDetails,
+          MaterialCommunityIcons.chart_bar,
+          Colors.red.shade700,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProgressIndicator(double percentage, Color color) {
+    return Column(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: LinearProgressIndicator(
+            value: (percentage / 100).clamp(0.0, 1.0),
+            backgroundColor: Colors.grey.shade200,
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+            minHeight: 10,
+          ),
+        ),
+      ],
     );
   }
 
@@ -691,38 +931,105 @@ Widget _buildBalanceSection() {
     );
   }
 
-  Widget _buildCategoryItem(MapEntry<String, dynamic> entry) {
+Widget _buildCategoryItem(MapEntry<String, dynamic> entry) {
     final formatCurrency = NumberFormat.currency(
       symbol: 'COP ',
       decimalDigits: 0,
       locale: 'es_CO',
     );
+    final bool isYearlyView = _controller.index == 12;
 
     if (entry.value is Map<String, double>) {
       final data = entry.value as Map<String, double>;
-      double percentUsed = 0.0;
-      String emoji;
-      String message;
-      
-      if (data['budget'] != null && data['budget']! > 0) {
-        percentUsed = (data['totalExpense']! / data['budget']! * 100);
+      final double totalExpense = data['totalExpense'] ?? 0.0;
+
+      // Vista anual simplificada
+      if (isYearlyView) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          entry.key,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Total gastado en el año',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        formatCurrency.format(totalExpense),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        _getMonthlyAverage(totalExpense),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _getYearlyAnalysis(totalExpense),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.blue.shade700,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        );
       }
 
-      // Determinar emoji y mensaje según el porcentaje usado
-      if (percentUsed > 100) {
-        emoji = '😱';
-        message = '¡Te has pasado del presupuesto!';
-      } else if (percentUsed > 80) {
-        emoji = '😰';
-        message = '¡Cuidado! Estás cerca del límite';
-      } else if (percentUsed > 50) {
-        emoji = '😊';
-        message = 'Vas bien, pero mantén el control';
-      } else {
-        emoji = '🤑';
-        message = '¡Excelente manejo del presupuesto!';
-      }
+      // Vista mensual
+      double percentUsed = 0.0;
+      String emoji = '🤑';  // valor por defecto
+      String message = '¡Excelente manejo del presupuesto!';  // valor por defecto
       
+      if (data['budget'] != null && data['budget']! > 0) {
+        percentUsed = (totalExpense / data['budget']! * 100);
+        
+        if (percentUsed > 100) {
+          emoji = '😱';
+          message = '¡Te has pasado del presupuesto!';
+        } else if (percentUsed > 80) {
+          emoji = '😰';
+          message = '¡Cuidado! Estás cerca del límite';
+        } else if (percentUsed > 50) {
+          emoji = '😊';
+          message = 'Vas bien, pero mantén el control';
+        }
+      }
+
       return Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -784,11 +1091,11 @@ Widget _buildBalanceSection() {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Has gastado: ${formatCurrency.format(data['totalExpense'])}',
+                  'Has gastado: ${formatCurrency.format(totalExpense)}',
                   style: const TextStyle(fontSize: 14),
                 ),
                 Text(
-                  'de ${formatCurrency.format(data['budget'])}',
+                  'de ${formatCurrency.format(data['budget'] ?? 0.0)}',
                   style: const TextStyle(fontSize: 14),
                 ),
               ],
@@ -800,7 +1107,7 @@ Widget _buildBalanceSection() {
 
     // Para ingresos
     return ListTile(
-      leading: Text(
+      leading: const Text(
         '💰',
         style: TextStyle(fontSize: 20),
       ),
@@ -843,4 +1150,47 @@ Widget _buildBalanceSection() {
     _controller.dispose();
     super.dispose();
   }
+
+    // Añadir los nuevos métodos aquí
+  String _getMonthlyAverage(double totalAmount) {
+    double monthlyAverage = totalAmount / 12;
+    return NumberFormat.currency(
+      symbol: 'COP ',
+      decimalDigits: 0,
+      locale: 'es_CO',
+    ).format(monthlyAverage) + ' promedio mensual';
+  }
+
+  String _getYearlyAnalysis(double totalAmount) {
+    double monthlyAverage = totalAmount / 12;
+    double monthlyIncome = _totalAnnualIncome / 12;
+    double percentageOfIncome = (monthlyAverage / monthlyIncome) * 100;
+
+    if (monthlyIncome == 0) {
+      return '😅 No hay ingresos registrados para hacer el análisis';
+    }
+
+    String emoji;
+    String mensaje;
+    
+    if (percentageOfIncome > 40) {
+      emoji = '😱';
+      mensaje = '¡Esta categoría representa una parte importante de tus gastos!';
+    } else if (percentageOfIncome > 25) {
+      emoji = '😰';
+      mensaje = '¡Esta categoría ocupa una porción considerable de tus ingresos!';
+    } else if (percentageOfIncome > 15) {
+      emoji = '😊';
+      mensaje = '¡Esta categoría tiene un impacto moderado en tus finanzas!';
+    } else if (percentageOfIncome > 5) {
+      emoji = '😄';
+      mensaje = '¡Buen manejo! Esta categoría está bien controlada';
+    } else {
+      emoji = '🤑';
+      mensaje = '¡Excelente! Esta categoría tiene un impacto mínimo en tus finanzas';
+    }
+
+    return '$emoji $mensaje (${percentageOfIncome.toStringAsFixed(1)}% de tus ingresos)';
+  }
+
 }

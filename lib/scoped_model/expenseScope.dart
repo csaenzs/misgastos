@@ -545,4 +545,38 @@ Map<String, double> calculateCategoryShare({int? month}) {
       return [];
     }
   }
+
+  Map<String, double> calculateAccountTotals({required int month}) {
+    Map<String, double> totals = {};
+    
+    // Procesar gastos
+    for (var expense in getExpenses) {
+      if (_shouldIncludeTransaction(expense, month)) {
+        String account = expense['account'] ?? 'Sin cuenta';
+        double amount = double.tryParse(expense['amount'].toString()) ?? 0;
+        totals[account] = (totals[account] ?? 0) - amount; // Restamos los gastos
+      }
+    }
+    
+    // Procesar ingresos
+    for (var income in getIncomes) {
+      if (_shouldIncludeTransaction(income, month)) {
+        String account = income['account'] ?? 'Sin cuenta';
+        double amount = double.tryParse(income['amount'].toString()) ?? 0;
+        totals[account] = (totals[account] ?? 0) + amount; // Sumamos los ingresos
+      }
+    }
+    
+    return totals;
+  }
+
+  bool _shouldIncludeTransaction(Map<String, dynamic> transaction, int month) {
+    String dateStr = transaction['date'];
+    try {
+      DateTime date = DateFormat('dd-MM-yyyy').parse(dateStr);
+      return month == 13 || date.month == month;
+    } catch (e) {
+      return false;
+    }
+  }
 }
