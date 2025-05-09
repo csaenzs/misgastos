@@ -21,6 +21,8 @@ dependencies:
   hive_flutter: ^1.1.0
   path_provider: ^2.1.2
   
+  permission_handler: ^11.0.1
+  
   # Gestión de estado
   scoped_model: ^2.0.0 
 

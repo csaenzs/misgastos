@@ -3,6 +3,9 @@ import 'package:gastos_compartidos/theme/colors.dart';
 import 'package:gastos_compartidos/scoped_model/expenseScope.dart';
 import 'package:gastos_compartidos/pages/addUser_page.dart';
 import 'package:gastos_compartidos/pages/budget_list_page.dart';
+import 'package:gastos_compartidos/utils/export_utils.dart';
+import 'package:file_picker/file_picker.dart';
+import '../utils/import_utils.dart';
 
 class ProfilePage extends StatefulWidget {
   final ExpenseModel model;
@@ -15,6 +18,25 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   String _selectedMonth = DateTime.now().month.toString();
+
+  void _showExportDialog(BuildContext context, String message) {
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: const Text('Exportación Completada'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            child: const Text('Cerrar'),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      );
+    },
+  );
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -187,6 +209,45 @@ class _ProfilePageState extends State<ProfilePage> {
             );
           },
         ),
+      _buildOptionTile(
+        context,
+        "Exportar Datos",
+        Icons.upload_file,
+        () async {
+          final result = await ExportUtils.exportData();
+          showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text("Exportación de Datos"),
+              content: Text(result),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cerrar"),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+      _buildOptionTile(
+        context,
+        "Importar Datos",
+        Icons.file_upload_outlined,
+        () async {
+          // Lógica para abrir el explorador de archivos
+          final result = await FilePicker.platform.pickFiles(
+            type: FileType.custom,
+            allowedExtensions: ['json'],
+          );
+
+          if (result != null) {
+            final filePath = result.files.single.path!;
+            final message = await importData(filePath);
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+          }
+        },
+      ),
       ],
     );
   }

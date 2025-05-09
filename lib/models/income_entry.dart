@@ -30,4 +30,28 @@ class IncomeEntry extends HiveObject {
     required this.person,
     required this.account,
   });
+
+    // ✅ Método para exportar
+  Map<String, dynamic> toMap() {
+    return {
+      'item': item,
+      'category': category,
+      'amount': amount,
+      'date': date.toIso8601String(),
+      'person': person,
+      'account': account,
+    };
+  }
+
+  factory IncomeEntry.fromMap(Map<String, dynamic> map) {
+  return IncomeEntry(
+    item: map['item'] ?? '',
+    category: map['category'] ?? '',
+    amount: (map['amount'] as num).toDouble(),
+    date: DateTime.parse(map['date']),
+    person: map['person'] ?? '',
+    account: map['account'] ?? '',
+  );
+}
+
 }
