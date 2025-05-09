@@ -4,7 +4,7 @@ import 'package:scoped_model/scoped_model.dart';
 
 class AddUserCat extends StatefulWidget {
   final BuildContext context;
-  final int type; // type 0 significa lista de Personas, type 1 significa categorías de gastos, type 2 significa categorías de ingresos, type 3 significa cuentas
+  final int type; // 0 = Personas, 1 = Categorías de gastos, 2 = Categorías de ingresos, 3 = Cuentas
 
   const AddUserCat({Key? key, required this.context, required this.type}) : super(key: key);
 
@@ -22,19 +22,17 @@ class _AddUserCatState extends State<AddUserCat> {
   void initState() {
     super.initState();
     isUser = widget.type == 0;
-    // Verificamos que se obtenga el modelo correctamente
     model = ScopedModel.of<ExpenseModel>(widget.context, rebuildOnChange: true);
-    // Usar `map` para asegurarse de que los valores se obtengan correctamente como String
+
     if (widget.type == 0) {
       _userList = model.getUsers;
     } else if (widget.type == 1) {
       _userList = model.getCategories.map((e) => e['name'] as String).toList();
     } else if (widget.type == 2) {
-      _userList = model.getIncomeCategories.map((e) => e['name'] as String).toList(); // Categorías de ingresos
+      _userList = model.getIncomeCategories.map((e) => e['name'] as String).toList();
     } else {
-      _userList = model.getAccounts.map((e) => e['name'] as String).toList(); // Cuentas
+      _userList = model.getAccounts.map((e) => e['name'] as String).toList();
     }
-    print('Lista inicializada: $_userList');
   }
 
   @override
@@ -49,45 +47,38 @@ class _AddUserCatState extends State<AddUserCat> {
       appBar: AppBar(
         title: Text(
           isUser ? "Personas" : widget.type == 1 ? "Categorías de Gastos" : widget.type == 2 ? "Categorías de Ingresos" : "Cuentas",
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.save, color: Colors.white),
-            onPressed: () async {
-              try {
-                if (isUser) {
-                  print('Guardando Personas: $_userList');
-                  await model.setUsers(_userList); // Añadimos await para esperar la operación
-                } else if (widget.type == 1) {
-                  print('Guardando categorías: ${_userList.map((name) => {'name': name}).toList()}');
-                  await model.setCategories(_userList.map((name) => {'name': name}).toList()); // Guardar categorías de gastos
-                } else if (widget.type == 2) {
-                  print('Guardando categorías de ingresos: ${_userList.map((name) => {'name': name}).toList()}');
-                  await model.setIncomeCategories(_userList.map((name) => {'name': name}).toList()); // Guardar categorías de ingresos
-                } else {
-                  print('Guardando cuentas: ${_userList.map((name) => {'name': name}).toList()}');
-                  await model.setAccounts(_userList.map((name) => {'name': name}).toList()); // Guardar cuentas
-                }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('${isUser ? "Personas" : widget.type == 1 ? "Categorías de gastos" : widget.type == 2 ? "Categorías de ingresos" : "Cuentas"} guardados exitosamente en Firestore'),
-                  ),
-                );
-                await _printFirestoreData();
-                Navigator.pop(context);
-              } catch (e) {
-                print('Error al guardar en Firestore: $e');
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Error al guardar ${isUser ? "Personas" : widget.type == 1 ? "Categorías de gastos" : widget.type == 2 ? "Categorías de ingresos" : "Cuentas"} en Firestore'),
-                  ),
-                );
+          onPressed: () async {
+            final name = userController.text.trim();
+            if (name.isNotEmpty) {
+              setState(() {
+                _userList.add(name);
+              });
+
+              if (isUser) {
+                await model.setUsers(_userList);
+              } else if (widget.type == 1) {
+                await model.setCategories(_userList.map((n) => {'name': n}).toList());
+              } else if (widget.type == 2) {
+                await model.setIncomeCategories(_userList.map((n) => {'name': n}).toList());
+              } else {
+                await model.setAccounts(_userList.map((n) => {'name': n}).toList());
               }
-            },
+
+              await model.setInitValues(); // Recargar desde Hive
+              userController.clear();
+
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (context) => AddUserCat(context: context, type: widget.type),
+                ),
+              );
+            }
+          },
           ),
           const SizedBox(width: 20)
         ],
@@ -103,9 +94,7 @@ class _AddUserCatState extends State<AddUserCat> {
           itemCount: _userList.length,
           itemBuilder: (context, index) {
             return Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15.0),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15.0)),
               elevation: 4,
               margin: const EdgeInsets.symmetric(vertical: 8),
               child: ListTile(
@@ -126,7 +115,6 @@ class _AddUserCatState extends State<AddUserCat> {
                     setState(() {
                       _userList.removeAt(index);
                     });
-                    _updateModelList();
                   },
                 ),
               ),
@@ -143,53 +131,49 @@ class _AddUserCatState extends State<AddUserCat> {
       barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15.0),
-          ),
-          title: Text('Ingresar nuevo ${isUser ? "Persona" : widget.type == 1 ? "categoría de gasto" : widget.type == 2 ? "categoría de ingreso" : "cuenta"}:'),
-          content: SingleChildScrollView(
-            child: ListBody(
-              children: <Widget>[
-                TextFormField(
-                  controller: userController,
-                  decoration: InputDecoration(
-                    hintText: 'Nombre del ${isUser ? "Persona" : widget.type == 1 ? "categoría de gasto" : widget.type == 2 ? "categoría de ingreso" : "cuenta"}',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-              ],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15.0)),
+          title: Text('Nuevo ${_getLabel()}:'),
+          content: TextFormField(
+            controller: userController,
+            decoration: InputDecoration(
+              hintText: 'Nombre del ${_getLabel()}',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
             ),
           ),
           actions: <Widget>[
             TextButton(
-              style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.secondary,
-              ),
+              style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.secondary),
               child: const Text('Cancelar'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.of(context).pop(),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).primaryColor,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
               ),
               child: const Text('Aceptar'),
-              onPressed: () {
-                Navigator.of(context).pop();
-                setState(() {
-                  if (userController.text.trim().isNotEmpty) {
-                    _userList.add(userController.text.trim());
-                    userController.clear();
+              onPressed: () async {
+                final name = userController.text.trim();
+                if (name.isNotEmpty) {
+                  setState(() {
+                    _userList.add(name);
+                  });
+
+                  if (isUser) {
+                    await model.setUsers(_userList);
+                  } else if (widget.type == 1) {
+                    await model.setCategories(_userList.map((n) => {'name': n}).toList());
+                  } else if (widget.type == 2) {
+                    await model.setIncomeCategories(_userList.map((n) => {'name': n}).toList());
+                  } else {
+                    await model.setAccounts(_userList.map((n) => {'name': n}).toList());
                   }
-                });
-                _updateModelList();
+
+                  await model.setInitValues();
+                }
+                userController.clear();
+                Navigator.of(context).pop();
               },
             ),
           ],
@@ -198,42 +182,13 @@ class _AddUserCatState extends State<AddUserCat> {
     );
   }
 
-  void _updateModelList() async {
-    try {
-      if (isUser) {
-        await model.setUsers(_userList);
-        print('Personas actualizados en Firestore: $_userList');
-      } else if (widget.type == 1) {
-        await model.setCategories(_userList.map((name) => {'name': name}).toList());
-        print('Categorías actualizadas en Firestore: $_userList');
-      } else if (widget.type == 2) {
-        await model.setIncomeCategories(_userList.map((name) => {'name': name}).toList());
-        print('Categorías de ingresos actualizadas en Firestore: $_userList');
-      } else {
-        await model.setAccounts(_userList.map((name) => {'name': name}).toList());
-        print('Cuentas actualizadas en Firestore: $_userList');
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${isUser ? "Personas" : widget.type == 1 ? "Categorías de gastos" : widget.type == 2 ? "Categorías de ingresos" : "Cuentas"} actualizados exitosamente en Firestore'),
-        ),
-      );
-      await _printFirestoreData();
-    } catch (e) {
-      print('Error al actualizar el modelo en Firestore: $e');
-    }
-  }
-
-  Future<void> _printFirestoreData() async {
-    try {
-      final snapshot = await model.getAppDataSnapshot();
-      if (snapshot.exists) {
-        print('Documento `app_data` en Firestore: ${snapshot.data()}');
-      } else {
-        print('El documento `app_data` no existe en Firestore.');
-      }
-    } catch (e) {
-      print('Error al obtener los datos de Firestore: $e');
-    }
+  String _getLabel() {
+    return isUser
+        ? "Persona"
+        : widget.type == 1
+            ? "Categoría de gasto"
+            : widget.type == 2
+                ? "Categoría de ingreso"
+                : "Cuenta";
   }
 }

@@ -1,15 +1,12 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hive/hive.dart';
 import 'package:scoped_model/scoped_model.dart';
 import 'package:intl/intl.dart';
+import '../models/expense_entry.dart';
+import '../models/income_entry.dart';
 
 class ExpenseModel extends Model {
-  final CollectionReference _expensesCollection = FirebaseFirestore.instance.collection('expenses');
-  final CollectionReference _incomesCollection = FirebaseFirestore.instance.collection('incomes');
-  final CollectionReference _appDataCollection = FirebaseFirestore.instance.collection('app_data');
-  final CollectionReference _budgetsCollection = FirebaseFirestore.instance.collection('budgets');
-
-  List<Map<String, dynamic>> _expenses = [];
-  List<Map<String, dynamic>> _incomes = [];
+  List<ExpenseEntry> _expenses = [];
+  List<IncomeEntry> _incomes = [];
   List<Map<String, dynamic>> _categories = [];
   List<Map<String, dynamic>> _incomeCategories = [];
   List<Map<String, dynamic>> _accounts = [];
@@ -17,9 +14,8 @@ class ExpenseModel extends Model {
   String _currentMonth = '1';
   Map<String, Map<String, double>> _budgetCache = {};
 
-  // Getters
-  List<Map<String, dynamic>> get getExpenses => _expenses;
-  List<Map<String, dynamic>> get getIncomes => _incomes;
+  List<ExpenseEntry> get getExpenses => _expenses;
+  List<IncomeEntry> get getIncomes => _incomes;
   List<Map<String, dynamic>> get getCategories => _categories;
   List<Map<String, dynamic>> get getIncomeCategories => _incomeCategories;
   List<Map<String, dynamic>> get getAccounts => _accounts;
@@ -32,342 +28,201 @@ class ExpenseModel extends Model {
 
   Future<void> setInitValues() async {
     try {
-      await createAppDataIfNotExists();
+      final expenseBox = Hive.box<ExpenseEntry>('expenses');
+      final incomeBox = Hive.box<IncomeEntry>('incomes');
+      final settingsBox = Hive.box('settings');
 
-      final results = await Future.wait([
-        _appDataCollection.doc('app_data').get(),
-        _expensesCollection.get(),
-        _incomesCollection.get(),
-      ]);
+      _expenses = expenseBox.values.toList();
+      _incomes = incomeBox.values.toList();
 
-      final appDataSnapshot = results[0] as DocumentSnapshot;
-      final expensesSnapshot = results[1] as QuerySnapshot;
-      final incomesSnapshot = results[2] as QuerySnapshot;
+        final rawCategories = settingsBox.get('categories', defaultValue: []);
+        _categories = List<Map<String, dynamic>>.from(
+          (rawCategories as List).map((e) => Map<String, dynamic>.from(e))
+        );
 
-      if (appDataSnapshot.exists) {
-        final data = appDataSnapshot.data() as Map<String, dynamic>;
-        _users = List<String>.from(data['users'] ?? []);
-        _categories = List<Map<String, dynamic>>.from(data['categories'] ?? []);
-        _incomeCategories = List<Map<String, dynamic>>.from(data['incomeCategories'] ?? []);
-        _accounts = List<Map<String, dynamic>>.from(data['accounts'] ?? []);
-        _currentMonth = data['currentMonth'] ?? '1';
-      } else {
-        _users = [];
-        _categories = [];
-        _incomeCategories = [];
-        _accounts = [];
-        _currentMonth = '1';
-      }
+        final rawIncomeCategories = settingsBox.get('incomeCategories', defaultValue: []);
+        _incomeCategories = List<Map<String, dynamic>>.from(
+          (rawIncomeCategories as List).map((e) => Map<String, dynamic>.from(e))
+        );
 
-      _expenses = expensesSnapshot.docs.map((e) {
-        var data = Map<String, dynamic>.from(e.data() as Map<String, dynamic>);
-        data['id'] = e.id;
-        return data;
-      }).toList();
-
-      _incomes = incomesSnapshot.docs.map((e) {
-        var data = Map<String, dynamic>.from(e.data() as Map<String, dynamic>);
-        data['id'] = e.id;
-        return data;
-      }).toList();
+        final rawAccounts = settingsBox.get('accounts', defaultValue: []);
+        _accounts = List<Map<String, dynamic>>.from(
+          (rawAccounts as List).map((e) => Map<String, dynamic>.from(e))
+        );
+      _users = List<String>.from(settingsBox.get('users', defaultValue: []));
+      _currentMonth = settingsBox.get('currentMonth', defaultValue: '1');
 
       notifyListeners();
     } catch (e) {
-      print("Error al inicializar valores: $e");
+      print("Error al inicializar datos Hive: \$e");
     }
   }
 
-  Future<Map<String, double>> getAllBudgetsForMonth(String month) async {
-    try {
-      month = month.padLeft(2, '0');
-      
-      if (_budgetCache.containsKey(month)) {
-        return _budgetCache[month]!;
+  void migrarPresupuestosConFormatoIncorrecto() {
+  final box = Hive.box('budgets');
+  final keys = box.keys.where((k) => k.toString().startsWith('presupuesto_')).toList();
+
+  for (var oldKey in keys) {
+    final parts = oldKey.toString().split('_');
+    if (parts.length >= 3) {
+      final rawMonth = parts[1];
+      final paddedMonth = rawMonth.padLeft(2, '0');
+      if (rawMonth != paddedMonth) {
+        final category = parts.sublist(2).join('_');
+        final newKey = 'presupuesto_${paddedMonth}_$category';
+        final amount = box.get(oldKey);
+        box.put(newKey, amount);
+        box.delete(oldKey);
       }
-
-      Map<String, double> budgets = {};
-      
-      QuerySnapshot snapshot = await _budgetsCollection
-          .where('month', isEqualTo: month)
-          .get();
-
-      for (var doc in snapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>;
-        budgets[data['category']] = data['amount'] is int 
-            ? (data['amount'] as int).toDouble() 
-            : data['amount'];
-      }
-
-      for (var category in _categories) {
-        String categoryName = category['name'];
-        if (!budgets.containsKey(categoryName)) {
-          budgets[categoryName] = 0.0;
-        }
-      }
-
-      _budgetCache[month] = budgets;
-      
-      return budgets;
-    } catch (e) {
-      print("Error al obtener los presupuestos del mes: $e");
-      return {};
     }
   }
+}
 
-    // Agregar estos métodos en la clase ExpenseModel
 
-Future<List<Map<String, dynamic>>> getLatestRecords({
-    required bool isIncome,
-    required String month,
-    int limit = 20,
-    DocumentSnapshot? lastDocument,
-  }) async {
+  void addExpense(ExpenseEntry entry) async {
     try {
-      Query query = isIncome ? _incomesCollection : _expensesCollection;
-      
-      query = query.orderBy('date', descending: true);
-
-      if (lastDocument != null) {
-        query = query.startAfterDocument(lastDocument);
-      }
-
-      QuerySnapshot snapshot = await query.get();
-      List<Map<String, dynamic>> records = snapshot.docs.map((doc) {
-        var data = Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
-        data['id'] = doc.id;
-        return data;
-      }).toList();
-
-      if (month != 'all') {
-        records = records.where((record) {
-          String recordMonth = record['date'].split('-')[1];
-          return recordMonth == month;
-        }).toList();
-      }
-
-      records.sort((a, b) {
-        DateTime dateA = _parseDate(a['date']);
-        DateTime dateB = _parseDate(b['date']);
-        return dateB.compareTo(dateA);
-      });
-
-      return records.take(limit).toList();
-    } catch (e) {
-      return [];
-    }
-  }
-
-  DateTime _parseDate(String dateStr) {
-    try {
-      // Convertir fecha del formato "dd-MM-yyyy" a DateTime
-      List<String> parts = dateStr.split('-');
-      if (parts.length == 3) {
-        int day = int.parse(parts[0]);
-        int month = int.parse(parts[1]);
-        int year = int.parse(parts[2]);
-        return DateTime(year, month, day);
-      }
-      return DateTime.now(); // Fecha por defecto si hay error
-    } catch (e) {
-      print("Error parsing date: $e");
-      return DateTime.now();
-    }
-  }
-
-    // Método para obtener el último documento para paginación
-Future<DocumentSnapshot?> getLastDocument(List<Map<String, dynamic>> records, bool isIncome) async {
-    if (records.isEmpty) return null;
-    
-    // Ordenar los records por fecha para asegurar que obtenemos el último correcto
-    records.sort((a, b) {
-      DateTime dateA = _parseDate(a['date']);
-      DateTime dateB = _parseDate(b['date']);
-      return dateB.compareTo(dateA);
-    });
-    
-    String lastId = records.last['id'];
-    CollectionReference collection = isIncome ? _incomesCollection : _expensesCollection;
-    
-    return await collection.doc(lastId).get();
-  }
-
-void addExpense(Map<String, dynamic> newExpenseEntry) async {
-    try {
-      String category = newExpenseEntry['category'];
-      double amount = double.tryParse(newExpenseEntry['amount']) ?? 0.0;
-
-      if (amount <= 0) {
-        print("Error: El monto ingresado no es válido.");
-        return;
-      }
-
-      // Obtenemos la información del presupuesto (para tenerla actualizada)
-      double budget = await getBudget(category, _currentMonth);
-      double totalExpenses = calculateTotalExpenseForCategory(category, _currentMonth);
-      double remainingBudget = budget - totalExpenses;
-
-      // Registramos el gasto sin importar si excede el presupuesto
-      DocumentReference docRef = await _expensesCollection.add(newExpenseEntry);
-      newExpenseEntry['id'] = docRef.id;
-      _expenses.insert(0, newExpenseEntry);
-
+      var box = Hive.box<ExpenseEntry>('expenses');
+      await box.add(entry);
+      _expenses.insert(0, entry);
       notifyListeners();
     } catch (e) {
-      print("Error al agregar un nuevo gasto: $e");
+      print("Error al agregar gasto: \$e");
     }
   }
 
-  Future<void> deleteExpense(String expenseId) async {
+  void deleteExpense(ExpenseEntry entry) async {
     try {
-      if (expenseId.isNotEmpty) {
-        await _expensesCollection.doc(expenseId).delete();
-        _expenses.removeWhere((expense) => expense['id'] == expenseId);
-        notifyListeners();
-      }
-    } catch (e) {
-      print("Error al eliminar el gasto: $e");
-    }
-  }
-
-  void addIncome(Map<String, dynamic> newIncomeEntry) async {
-    try {
-      DocumentReference docRef = await _incomesCollection.add(newIncomeEntry);
-      newIncomeEntry['id'] = docRef.id;
-      _incomes.insert(0, newIncomeEntry);
+      await entry.delete();
+      _expenses.remove(entry);
       notifyListeners();
     } catch (e) {
-      print("Error al agregar un nuevo ingreso: $e");
+      print("Error al eliminar gasto: \$e");
     }
   }
 
-  Future<void> deleteIncome(String incomeId) async {
+  void addIncome(IncomeEntry entry) async {
     try {
-      if (incomeId.isNotEmpty) {
-        await _incomesCollection.doc(incomeId).delete();
-        _incomes.removeWhere((income) => income['id'] == incomeId);
-        notifyListeners();
-      }
-    } catch (e) {
-      print("Error al eliminar el ingreso: $e");
-    }
-  }
-
-  Future<void> setAccounts(List<Map<String, dynamic>> accountList) async {
-    try {
-      await createAppDataIfNotExists();
-      _accounts = accountList;
-      await _appDataCollection.doc('app_data').update({'accounts': _accounts});
+      final box = Hive.box<IncomeEntry>('incomes');
+      await box.add(entry);
+      _incomes.insert(0, entry);
       notifyListeners();
     } catch (e) {
-      print("Error al configurar las cuentas: $e");
+      print("Error al agregar ingreso: \$e");
     }
   }
 
-  Future<void> deleteAccount(String accountName) async {
+  void deleteIncome(IncomeEntry entry) async {
     try {
-      _accounts.removeWhere((account) => account['name'] == accountName);
-      await _appDataCollection.doc('app_data').update({'accounts': _accounts});
+      await entry.delete();
+      _incomes.remove(entry);
       notifyListeners();
     } catch (e) {
-      print("Error al eliminar la cuenta: $e");
+      print("Error al eliminar ingreso: \$e");
     }
   }
 
-  Future<void> setIncomeCategories(List<Map<String, dynamic>> categoryList) async {
-    try {
-      await createAppDataIfNotExists();
-      _incomeCategories = categoryList;
-      await _appDataCollection.doc('app_data').update({'incomeCategories': _incomeCategories});
-      notifyListeners();
-    } catch (e) {
-      print("Error al configurar las categorías de ingresos: $e");
+  Map<String, double> calculateCategoryShare({int? month}) {
+    Map<String, double> categoryShare = {};
+
+    List<ExpenseEntry> filtered = month == null || month == 13
+        ? _expenses
+        : _expenses.where((e) => e.date.month == month).toList();
+
+    for (var expense in filtered) {
+      String category = expense.category;
+      double amount = expense.amount;
+      categoryShare[category] = (categoryShare[category] ?? 0) + amount;
     }
+
+    return categoryShare;
   }
 
   Map<String, double> calculateIncomeCategoryShare({int? month}) {
     Map<String, double> incomeCategoryShare = {};
-    List<Map<String, dynamic>> filteredIncomes = _filterIncomesByMonth(month);
 
-    for (var income in filteredIncomes) {
-      String category = income['category'] ?? 'Other';
-      double amount = _convertToDouble(income['amount']);
+    List<IncomeEntry> filtered = month == null || month == 13
+        ? _incomes
+        : _incomes.where((e) => e.date.month == month).toList();
 
-      if (incomeCategoryShare.containsKey(category)) {
-        incomeCategoryShare[category] = incomeCategoryShare[category]! + amount;
-      } else {
-        incomeCategoryShare[category] = amount;
-      }
+    for (var income in filtered) {
+      String category = income.category;
+      double amount = income.amount;
+      incomeCategoryShare[category] = (incomeCategoryShare[category] ?? 0) + amount;
     }
 
     return incomeCategoryShare;
   }
 
-  List<Map<String, dynamic>> _filterIncomesByMonth(int? month) {
-    if (month == null || month == 13) {
-      return _incomes;
-    }
-    return _incomes.where((income) {
-      final date = income['date'] ?? '';
-      final parts = date.split('-');
-      if (parts.length >= 2) {
-        final incomeMonth = int.tryParse(parts[1]);
-        return incomeMonth == month;
+  Map<String, double> calculateAccountTotals({required int month}) {
+    Map<String, double> totals = {};
+
+    for (var expense in _expenses) {
+      if (month == 13 || expense.date.month == month) {
+        String account = "Sin cuenta";
+        double amount = expense.amount;
+        totals[account] = (totals[account] ?? 0) - amount;
       }
-      return false;
-    }).toList();
+    }
+
+    for (var income in _incomes) {
+      if (month == 13 || income.date.month == month) {
+        String account = "Sin cuenta";
+        double amount = income.amount;
+        totals[account] = (totals[account] ?? 0) + amount;
+      }
+    }
+
+    return totals;
   }
 
-  Future<void> setBudget(String category, String month, double amount) async {
-    try {
-      month = month.padLeft(2, '0');
-      String documentId = '$category-$month';
-
-      await _budgetsCollection.doc(documentId).set({
-        'category': category,
-        'month': month,
-        'amount': amount,
-      });
-
-      if (_budgetCache.containsKey(month)) {
-        _budgetCache[month]![category] = amount;
-      }
-
-      notifyListeners();
-    } catch (e) {
-      print("Error al establecer el presupuesto: $e");
-      throw e;
-    }
+  double calculateTotalExpenseForCategory(String category, String month) {
+    int monthInt = int.tryParse(month) ?? 0;
+    return _expenses
+        .where((e) => e.category == category && (monthInt == 0 || e.date.month == monthInt))
+        .fold(0.0, (sum, e) => sum + e.amount);
   }
 
-  Future<double> getBudget(String category, String month) async {
-    try {
-      month = month.padLeft(2, '0');
+Future<double> getBudget(String category, String month) async {
+  try {
+    // Normaliza el mes a 2 dígitos (ej: "5" → "05")
+    month = month.padLeft(2, '0');
 
-      if (_budgetCache.containsKey(month) && _budgetCache[month]!.containsKey(category)) {
-        return _budgetCache[month]![category] ?? 0.0;
-      }
-
-      String documentId = '$category-$month';
-      DocumentSnapshot snapshot = await _budgetsCollection.doc(documentId).get();
-
-      if (snapshot.exists) {
-        double amount = snapshot['amount'] is int 
-            ? (snapshot['amount'] as int).toDouble() 
-            : snapshot['amount'];
-        
-        if (!_budgetCache.containsKey(month)) {
-          _budgetCache[month] = {};
-        }
-        _budgetCache[month]![category] = amount;
-        
-        return amount;
-      }
-      return 0.0;
-    } catch (e) {
-      print("Error al obtener el presupuesto: $e");
-      return 0.0;
+    if (_budgetCache.containsKey(month) && _budgetCache[month]!.containsKey(category)) {
+      return _budgetCache[month]![category]!;
     }
+
+    final budgetsBox = Hive.box('budgets');
+    String key = 'presupuesto_${month}_$category';
+    double amount = budgetsBox.get(key, defaultValue: 0.0);
+
+    _budgetCache[month] ??= {};
+    _budgetCache[month]![category] = amount;
+
+    return amount;
+  } catch (e) {
+    print("Error al obtener el presupuesto: $e");
+    return 0.0;
   }
+}
+
+
+Future<void> setBudget(String category, String month, double amount) async {
+  try {
+    final budgetsBox = Hive.box('budgets');
+    final normalizedMonth = month.padLeft(2, '0'); // Asegura formato "05"
+    String key = 'presupuesto_${normalizedMonth}_$category';
+    await budgetsBox.put(key, amount);
+
+    _budgetCache[normalizedMonth] ??= {};
+    _budgetCache[normalizedMonth]![category] = amount;
+
+    notifyListeners();
+  } catch (e) {
+    print("Error al establecer el presupuesto: $e");
+  }
+}
+
+
 
   Future<double> getRemainingBudget(String category, String month) async {
     double budget = await getBudget(category, month);
@@ -375,208 +230,110 @@ void addExpense(Map<String, dynamic> newExpenseEntry) async {
     return budget - totalExpenses;
   }
 
-  double calculateTotalExpenseForCategory(String category, String month) {
-    String formattedMonth = month.padLeft(2, '0');
-    return _expenses
-        .where((expense) =>
-            expense['category'] == category &&
-            _getMonthFromDateString(expense['date']) == formattedMonth)
-        .fold(0.0, (sum, expense) => sum + _convertToDouble(expense['amount']));
-  }
-
-  String _getMonthFromDateString(String date) {
-    try {
-      DateTime parsedDate = DateFormat('dd-MM-yyyy').parse(date);
-      return parsedDate.month.toString().padLeft(2, '0');
-    } catch (e) {
-      print("Error al parsear la fecha: $e");
-      return '';
-    }
-  }
-
-  Future<void> createAppDataIfNotExists() async {
-    DocumentSnapshot doc = await _appDataCollection.doc('app_data').get();
-    if (!doc.exists) {
-      await _appDataCollection.doc('app_data').set({
-        'users': [],
-        'categories': [],
-        'incomeCategories': [],
-        'accounts': [],
-        'currentMonth': '1',
-      });
-    } else {
-      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-      Map<String, dynamic> updates = {};
-
-      if (!data.containsKey('incomeCategories')) updates['incomeCategories'] = [];
-      if (!data.containsKey('categories')) updates['categories'] = [];
-      if (!data.containsKey('accounts')) updates['accounts'] = [];
-      if (!data.containsKey('users')) updates['users'] = [];
-      if (!data.containsKey('currentMonth')) updates['currentMonth'] = '1';
-
-      if (updates.isNotEmpty) {
-        await _appDataCollection.doc('app_data').update(updates);
-      }
-    }
-  }
-
-  double _convertToDouble(dynamic value) {
-    try {
-      if (value is String) return double.tryParse(value) ?? 0.0;
-      if (value is int) return value.toDouble();
-      if (value is double) return value;
-      return 0.0;
-    } catch (e) {
-      print("Error al convertir a double: $e");
-      return 0.0;
-    }
-  }
-
-  void setCurrentMonth(String month) async {
+  void setCurrentMonth(String month) {
     _currentMonth = month.padLeft(2, '0');
-    _budgetCache.clear();
-    await _appDataCollection.doc('app_data').update({'currentMonth': _currentMonth});
+    Hive.box('settings').put('currentMonth', _currentMonth);
     notifyListeners();
+  }
+
+Future<void> setCategories(List<Map<String, dynamic>> categoryList) async {
+  try {
+    final settingsBox = Hive.box('settings');
+    _categories = categoryList;
+    await settingsBox.put('categories', categoryList);
+
+    print("Categorías actuales en Hive: ${settingsBox.get('categories')}");
+
+    notifyListeners();
+  } catch (e) {
+    print("Error al guardar categorías: $e");
+  }
+}
+
+
+Future<void> setIncomeCategories(List<Map<String, dynamic>> categoryList) async {
+  try {
+    final settingsBox = Hive.box('settings');
+    _incomeCategories = categoryList;
+    await settingsBox.put('incomeCategories', categoryList);
+    notifyListeners();
+  } catch (e) {
+    print("Error al guardar categorías de ingreso: $e");
+  }
+}
+
+  Future<void> setAccounts(List<Map<String, dynamic>> accountList) async {
+    try {
+      final settingsBox = Hive.box('settings');
+      _accounts = accountList;
+      await settingsBox.put('accounts', accountList);
+      notifyListeners();
+    } catch (e) {
+      print("Error al guardar cuentas: \$e");
+    }
   }
 
   Future<void> setUsers(List<String> userList) async {
     try {
-      await createAppDataIfNotExists();
+      final settingsBox = Hive.box('settings');
       _users = userList;
-      await _appDataCollection.doc('app_data').update({'users': _users});
+      await settingsBox.put('users', userList);
       notifyListeners();
     } catch (e) {
-      print("Error al configurar la lista de Personas: $e");
+      print("Error al guardar usuarios: \$e");
     }
   }
 
-  Future<void> setCategories(List<Map<String, dynamic>> categoryList) async {
-    try {
-      await createAppDataIfNotExists();
-      _categories = categoryList;
-      await _appDataCollection.doc('app_data').update({'categories': _categories});
-      notifyListeners();
-    } catch (e) {
-      print("Error al configurar la lista de categorías: $e");
-    }
-  }
+Future<List<Map<String, dynamic>>> getBudgetsForMonth(String month) async {
+  try {
+    final box = Hive.box('budgets');
+    List<Map<String, dynamic>> budgets = [];
 
-  Future<DocumentSnapshot> getAppDataSnapshot() async {
-    return await _appDataCollection.doc('app_data').get();
-  }
+    final normalizedMonth = month.padLeft(2, '0'); // Asegura formato "05"
 
-  Future<List<Map<String, dynamic>>> getBudgetsForMonth(String month) async {
-    try {
-      QuerySnapshot snapshot = await _budgetsCollection.where('month', isEqualTo: month).get();
-      return snapshot.docs.map((e) => e.data() as Map<String, dynamic>).toList();
-    } catch (e) {
-      print("Error al obtener los presupuestos del mes: $e");
-      return [];
-    }
-  }
+    for (var key in box.keys) {
+      final keyStr = key.toString();
+      if (keyStr.startsWith('presupuesto_${normalizedMonth}_')) {
+        final parts = keyStr.split('_');
+        final category = parts.sublist(2).join('_');
+        final amountRaw = box.get(key, defaultValue: 0.0);
+        final amount = (amountRaw is String)
+            ? double.tryParse(amountRaw) ?? 0.0
+            : (amountRaw as num).toDouble();
 
-Map<String, double> calculateCategoryShare({int? month}) {
-    Map<String, double> categoryShare = {};
-    List<Map<String, dynamic>> filteredExpenses = _filterExpensesByMonth(month);
-
-    for (var expense in filteredExpenses) {
-      String category = expense['category'] ?? 'Other';
-      double amount = _convertToDouble(expense['amount']);
-
-      if (categoryShare.containsKey(category)) {
-        categoryShare[category] = categoryShare[category]! + amount;
-      } else {
-        categoryShare[category] = amount;
+        budgets.add({
+          'category': category,
+          'amount': amount,
+        });
       }
     }
-
-    return categoryShare;
+    return budgets;
+  } catch (e) {
+    print('❌ Error al obtener presupuestos: $e');
+    return [];
   }
+}
 
-  Map<String, double> calculateUserShare({int? month}) {
-    Map<String, double> userShare = {};
-    List<Map<String, dynamic>> filteredExpenses = _filterExpensesByMonth(month);
+List<String> getAllMonthsFromBudgets() {
+  final box = Hive.box('budgets');
+  final keys = box.keys.toList();
+  final months = <String>{};
 
-    for (var user in _users) {
-      userShare[user] = 0.0;
-    }
-
-    for (var expense in filteredExpenses) {
-      String user = expense['person'] ?? 'Unknown';
-      double amount = _convertToDouble(expense['amount']);
-
-      if (userShare.containsKey(user)) {
-        userShare[user] = userShare[user]! + amount;
+  for (var key in keys) {
+    if (key.toString().startsWith('presupuesto_')) {
+      final parts = key.toString().split('_');
+      if (parts.length >= 3) {
+        final monthRaw = parts[1];
+        final monthFormatted = monthRaw.padLeft(2, '0');
+        months.add(monthFormatted);
       }
     }
-
-    return userShare;
   }
 
-  List<Map<String, dynamic>> _filterExpensesByMonth(int? month) {
-    if (month == null || month == 13) {
-      return _expenses;
-    }
+  return months.toList()..sort();
+}
 
-    return _expenses.where((expense) {
-      final date = expense['date'] ?? '';
-      final parts = date.split('-');
-      if (parts.length >= 2) {
-        final expenseMonth = int.tryParse(parts[1]);
-        return expenseMonth == month;
-      }
-      return false;
-    }).toList();
-  }
 
-  Future<List<String>> getMonthsWithBudgets() async {
-    try {
-      QuerySnapshot snapshot = await _budgetsCollection.get();
-      Set<String> months = {};
 
-      for (var document in snapshot.docs) {
-        String month = document['month'];
-        months.add(month);
-      }
 
-      return months.toList()..sort((a, b) => int.parse(a).compareTo(int.parse(b)));
-    } catch (e) {
-      print("Error al obtener los meses con presupuestos: $e");
-      return [];
-    }
-  }
-
-  Map<String, double> calculateAccountTotals({required int month}) {
-    Map<String, double> totals = {};
-    
-    // Procesar gastos
-    for (var expense in getExpenses) {
-      if (_shouldIncludeTransaction(expense, month)) {
-        String account = expense['account'] ?? 'Sin cuenta';
-        double amount = double.tryParse(expense['amount'].toString()) ?? 0;
-        totals[account] = (totals[account] ?? 0) - amount; // Restamos los gastos
-      }
-    }
-    
-    // Procesar ingresos
-    for (var income in getIncomes) {
-      if (_shouldIncludeTransaction(income, month)) {
-        String account = income['account'] ?? 'Sin cuenta';
-        double amount = double.tryParse(income['amount'].toString()) ?? 0;
-        totals[account] = (totals[account] ?? 0) + amount; // Sumamos los ingresos
-      }
-    }
-    
-    return totals;
-  }
-
-  bool _shouldIncludeTransaction(Map<String, dynamic> transaction, int month) {
-    String dateStr = transaction['date'];
-    try {
-      DateTime date = DateFormat('dd-MM-yyyy').parse(dateStr);
-      return month == 13 || date.month == month;
-    } catch (e) {
-      return false;
-    }
-  }
 }

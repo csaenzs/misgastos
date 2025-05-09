@@ -17,18 +17,26 @@ class _ViewBudgetPageState extends State<ViewBudgetPage> {
   late Future<List<Map<String, dynamic>>> _budgetData;
   String _selectedMonth = '';
 
-  @override
-  void initState() {
-    super.initState();
-    _selectedMonth = widget.month;
-    _budgetData = widget.model.getBudgetsForMonth(_selectedMonth);
-  }
+@override
+void initState() {
+  super.initState();
+  _selectedMonth = widget.month.padLeft(2, '0'); // 👈 Importante aquí también
+  _loadBudgetData();
+}
+
+void _loadBudgetData() async {
+  await widget.model.setInitValues();
+  final monthNormalized = _selectedMonth.padLeft(2, '0');
+  setState(() {
+    _budgetData = widget.model.getBudgetsForMonth(monthNormalized);
+  });
+}
 
   void _onMonthSelected(String newMonth) {
     setState(() {
       _selectedMonth = newMonth;
-      _budgetData = widget.model.getBudgetsForMonth(newMonth);
     });
+    _loadBudgetData(); // 🔁 recarga presupuesto cuando cambia de mes
   }
 
   @override
@@ -55,54 +63,41 @@ class _ViewBudgetPageState extends State<ViewBudgetPage> {
   }
 
   Widget _buildMonthSlider() {
-    return FutureBuilder<List<String>>(
-      future: widget.model.getMonthsWithBudgets(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: CircularProgressIndicator(),
-          );
-        } else if (snapshot.hasError) {
+    List<String> availableMonths = widget.model.getAllMonthsFromBudgets();
+
+    if (availableMonths.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Text('No hay presupuestos registrados.'),
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+      child: Row(
+        children: availableMonths.map((month) {
+          bool isSelected = _selectedMonth == month;
           return Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text('Error: ${snapshot.error}'),
-          );
-        } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text('No hay presupuestos registrados.'),
-          );
-        } else {
-          return SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-            child: Row(
-              children: snapshot.data!.map((month) {
-                bool isSelected = _selectedMonth == month;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isSelected ? primary : Colors.grey.shade300,
-                      foregroundColor: isSelected ? Colors.white : Colors.black,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15.0),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    ),
-                    onPressed: () => _onMonthSelected(month),
-                    child: Text(
-                      getMonthName(int.parse(month)),
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                );
-              }).toList(),
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isSelected ? primary : Colors.grey.shade300,
+                foregroundColor: isSelected ? Colors.white : Colors.black,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15.0),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              ),
+              onPressed: () => _onMonthSelected(month),
+              child: Text(
+                getMonthName(int.parse(month)),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
             ),
           );
-        }
-      },
+        }).toList(),
+      ),
     );
   }
 
@@ -118,10 +113,7 @@ class _ViewBudgetPageState extends State<ViewBudgetPage> {
           return const Center(
             child: Text(
               'No hay presupuestos registrados para este mes.',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey,
-              ),
+              style: TextStyle(fontSize: 18, color: Colors.grey),
             ),
           );
         } else {
@@ -149,10 +141,7 @@ class _ViewBudgetPageState extends State<ViewBudgetPage> {
                     child: ListTile(
                       leading: CircleAvatar(
                         backgroundColor: primary.withOpacity(0.2),
-                        child: Icon(
-                          Icons.category,
-                          color: primary,
-                        ),
+                        child: Icon(Icons.category, color: primary),
                       ),
                       title: Text(
                         budget['category'],
@@ -164,16 +153,9 @@ class _ViewBudgetPageState extends State<ViewBudgetPage> {
                       ),
                       subtitle: Text(
                         'Presupuesto: COP ${NumberFormat("#,##0", "es_CO").format(budget['amount'])}',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: Colors.black54,
-                        ),
+                        style: const TextStyle(fontSize: 16, color: Colors.black54),
                       ),
-                      trailing: Icon(
-                        Icons.arrow_forward_ios,
-                        color: secondary,
-                        size: 18,
-                      ),
+                      trailing: Icon(Icons.arrow_forward_ios, color: secondary, size: 18),
                     ),
                   ),
                 );

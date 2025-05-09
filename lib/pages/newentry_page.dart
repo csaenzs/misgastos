@@ -4,6 +4,8 @@ import 'package:gastos_compartidos/scoped_model/expenseScope.dart';
 import 'package:gastos_compartidos/theme/colors.dart';
 import 'package:scoped_model/scoped_model.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:gastos_compartidos/models/income_entry.dart';
+import 'package:gastos_compartidos/models/expense_entry.dart';
 
 class NewEntryPage extends StatefulWidget {
   final Function callback;
@@ -38,27 +40,44 @@ class _NewEntryPageState extends State<NewEntryPage> {
   double _currentSpentPercentage = 0.0;
   bool _isIncome = false;
 
-  @override
-  void initState() {
-    super.initState();
-    model = ScopedModel.of(widget.context);
-    _users = model!.getUsers;
-    _accounts = model!.getAccounts.map((e) => e['name'] as String).toList();
-    _amountEditor.addListener(_updateBudgetPercentage);
+@override
+void initState() {
+  super.initState();
+  model = ScopedModel.of(widget.context);
+  _users = model!.getUsers;
+  _accounts = model!.getAccounts.map((e) => e['name'] as String).toList();
+  _amountEditor.addListener(_updateBudgetPercentage);
 
-    if (widget.index != -999) {
-      Map<String, dynamic> entry = _isIncome ? model!.getIncomes[widget.index] : model!.getExpenses[widget.index];
-      _itemEditor.text = entry['item'];
-      _personEditor.text = entry['person'];
-      _amountEditor.text = entry['amount'];
-      _categoryEditor.text = entry['category'];
-      _dateEditor.text = entry['date'];
-      _selectedAccount = entry['account'] ?? '';
-      _selectedPerson = entry['person'] ?? '';
-      _selectedCategory = entry['category'] ?? '';
-      _isIncome = entry['isIncome'] ?? false;
+  if (widget.index != -999) {
+    if (_isIncome) {
+      final entry = model!.getIncomes[widget.index];
+      _itemEditor.text = entry.item;
+      _personEditor.text = entry.person;
+      _amountEditor.text = entry.amount.toString();
+      _categoryEditor.text = entry.category;
+      _dateEditor.text = DateFormat('yyyy-MM-dd').format(entry.date);
+      _selectedAccount = entry.account;
+      _selectedPerson = entry.person;
+      _selectedCategory = entry.category;
+    } else {
+      final entry = model!.getExpenses[widget.index];
+      _itemEditor.text = entry.item;
+      _personEditor.text = entry.person;
+      _amountEditor.text = entry.amount.toString();
+      _categoryEditor.text = entry.category;
+      _dateEditor.text = DateFormat('yyyy-MM-dd').format(entry.date);
+      _selectedAccount = entry.account;
+      _selectedPerson = entry.person;
+      _selectedCategory = entry.category;
     }
   }
+
+  // 🔄 Si ya hay categoría seleccionada (y es un gasto), cargar el presupuesto
+  if (_selectedCategory != null && _selectedCategory!.isNotEmpty && !_isIncome) {
+    _loadRemainingBudget();
+  }
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -132,13 +151,14 @@ class _NewEntryPageState extends State<NewEntryPage> {
                   ],
                   onChanged: (value) {
                     if (value == 'Agregar nuevo') {
-                      _showAddDialog('Persona', (newValue) {
-                        setState(() {
-                          _users = [..._users, newValue];
-                          model!.setUsers(_users);
-                          _selectedPerson = newValue;
-                        });
+                    _showAddDialog('Persona', (newValue) async {
+                      await model!.setUsers([..._users, newValue]);
+                      await model!.setInitValues();
+                      setState(() {
+                        _users = model!.getUsers;
+                        _selectedPerson = newValue;
                       });
+                    });
                     } else {
                       setState(() {
                         _selectedPerson = value;
@@ -203,10 +223,11 @@ class _NewEntryPageState extends State<NewEntryPage> {
                   ],
                   onChanged: (value) {
                     if (value == 'Agregar nueva') {
-                      _showAddDialog('Cuenta', (newValue) {
+                      _showAddDialog('Cuenta', (newValue) async {
+                        await model!.setAccounts([...model!.getAccounts, {'name': newValue}]);
+                        await model!.setInitValues(); // fuerza recarga desde Hive
                         setState(() {
-                          _accounts = [..._accounts, newValue];
-                          model!.setAccounts([...model!.getAccounts, {'name': newValue}]);
+                          _accounts = model!.getAccounts.map((e) => e['name'] as String).toList();
                           _selectedAccount = newValue;
                         });
                       });
@@ -271,7 +292,11 @@ class _NewEntryPageState extends State<NewEntryPage> {
                       onPressed: () async {
                         bool saved = await saveRecordWithBudgetCheck();
                         if (saved) {
-                          widget.callback(0);
+                          final parsedDate = DateFormat('yyyy-MM-dd').parse(_dateEditor.text);
+                          final currentMonth = DateFormat('MM').format(parsedDate);
+
+                          await model!.setInitValues(); // actualiza desde Hive
+                          widget.callback(currentMonth); // envía el mes del nuevo registro
                           Navigator.pop(context);
                         }
                       },
@@ -298,63 +323,80 @@ class _NewEntryPageState extends State<NewEntryPage> {
   }
 
   // Método para mostrar un diálogo para agregar un nuevo elemento (Persona o Cuenta)
-  void _showAddDialog(String type, Function(String) onAdd) {
-    TextEditingController controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Agregar nueva $type'),
-          content: TextField(
-            controller: controller,
-            decoration: InputDecoration(hintText: 'Ingrese el nombre de la nueva $type'),
+void _showAddDialog(String type, Function(String) onAdd) {
+  TextEditingController controller = TextEditingController();
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: Text('Agregar nueva $type'),
+        content: TextField(
+          controller: controller,
+          decoration: InputDecoration(hintText: 'Ingrese el nombre de la nueva $type'),
+        ),
+        actions: [
+          TextButton(
+            child: Text('Cancelar'),
+            onPressed: () => Navigator.of(context).pop(),
           ),
-          actions: [
-            TextButton(
-              child: Text('Cancelar'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-            TextButton(
-              child: Text('Agregar'),
-              onPressed: () {
-                if (controller.text.isNotEmpty) {
-                  onAdd(controller.text);
-                  Navigator.of(context).pop();
+          TextButton(
+            child: Text('Agregar'),
+            onPressed: () async {
+              if (controller.text.isNotEmpty) {
+                String newValue = controller.text.trim();
+
+                if (type == 'Persona') {
+                  await model!.setUsers([...model!.getUsers, newValue]);
+                } else if (type == 'Cuenta') {
+                  await model!.setAccounts([...model!.getAccounts, {'name': newValue}]);
+                } else if (_isIncome) {
+                  await model!.setIncomeCategories([...model!.getIncomeCategories, {'name': newValue}]);
+                } else {
+                  await model!.setCategories([...model!.getCategories, {'name': newValue}]);
                 }
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
+
+                await model!.setInitValues(); // recarga desde Hive
+                Navigator.of(context).pop();
+
+                setState(() {
+                  if (type == 'Persona') _selectedPerson = newValue;
+                  if (type == 'Cuenta') _selectedAccount = newValue;
+                  if (type == 'Categoría') _selectedCategory = newValue;
+                });
+              }
+            },
+          ),
+        ],
+      );
+    },
+  );
+}
 
 Future<void> _loadRemainingBudget() async {
-  if (_isIncome) {
-    return;
-  }
+  if (_isIncome) return;
+
   try {
+    // Formato sin ceros a la izquierda: '5' en vez de '05'
     String selectedMonth = DateFormat('MM').format(DateFormat('yyyy-MM-dd').parse(_dateEditor.text));
+
     double budget = await model!.getBudget(_selectedCategory!, selectedMonth);
     double totalExpenses = model!.calculateTotalExpenseForCategory(_selectedCategory!, selectedMonth);
 
     setState(() {
       _budgetAmount = budget;
       _remainingBudget = budget - totalExpenses;
-      // Calcular el porcentaje inicial cuando se carga el presupuesto
-      _currentSpentPercentage = (_budgetAmount - _remainingBudget) / _budgetAmount * 100;
-      
-      // Si hay un monto ingresado, actualizar el porcentaje
-      if (_amountEditor.text.isNotEmpty) {
-        double currentAmount = double.tryParse(_amountEditor.text) ?? 0.0;
-        double totalSpent = _budgetAmount - _remainingBudget + currentAmount;
-        _currentSpentPercentage = (totalSpent / _budgetAmount) * 100;
-      }
+
+      // Calcular porcentaje de gasto
+      double enteredAmount = double.tryParse(_amountEditor.text) ?? 0.0;
+      double totalSpent = _budgetAmount - _remainingBudget + enteredAmount;
+
+      _currentSpentPercentage = (_budgetAmount == 0)
+          ? 0.0
+          : (totalSpent / _budgetAmount) * 100;
     });
+
   } catch (e) {
-    print("Error al cargar el presupuesto: $e");
+    print("❌ Error al cargar el presupuesto: $e");
   }
 }
 
@@ -411,20 +453,28 @@ Future<void> _loadRemainingBudget() async {
   Future<bool> saveRecordWithBudgetCheck() async {
     await _loadRemainingBudget();
     if (formKey.currentState!.validate()) {
-      Map<String, dynamic> data = {
-        "date": DateFormat('dd-MM-yyyy').format(DateFormat('yyyy-MM-dd').parse(_dateEditor.text)),
-        "person": _selectedPerson ?? '',
-        "item": _itemEditor.text,
-        "category": _selectedCategory ?? '',
-        "amount": _amountEditor.text,
-        "account": _selectedAccount ?? '',
-        "isIncome": _isIncome,
-      };
-      if (_isIncome) {
-        model!.addIncome(data);
-      } else {
-        model!.addExpense(data);
-      }
+    final parsedDate = DateFormat('yyyy-MM-dd').parse(_dateEditor.text);
+    if (_isIncome) {
+      final income = IncomeEntry(
+        item: _itemEditor.text,
+        category: _selectedCategory ?? '',
+        amount: double.tryParse(_amountEditor.text) ?? 0.0,
+        date: parsedDate,
+        person: _selectedPerson ?? '',
+        account: _selectedAccount ?? '',
+      );
+      model!.addIncome(income);
+    } else {
+      final expense = ExpenseEntry(
+        item: _itemEditor.text,
+        category: _selectedCategory ?? '',
+        amount: double.tryParse(_amountEditor.text) ?? 0.0,
+        date: parsedDate,
+        person: _selectedPerson ?? '',
+        account: _selectedAccount ?? '',
+      );
+      model!.addExpense(expense);
+    }
       return true;
     }
     return false;
